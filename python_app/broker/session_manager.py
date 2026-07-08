@@ -14,14 +14,41 @@ class SessionManager:
 
     def load_config(self):
         if os.path.exists(self.config_path):
-            with open(self.config_path, 'r') as f:
-                return json.load(f)
-        return {"mode": "paper", "client_id": "MOCK_ID", "access_token": "MOCK_TOKEN"}
+            try:
+                with open(self.config_path, 'r') as f:
+                    return json.load(f)
+            except Exception as e:
+                self.logger.error(f"Error loading config: {e}")
+
+        default_config = {
+            "mode": "paper",
+            "client_id": "",
+            "access_token": "",
+            "totp_secret": "",
+            "risk": {
+                "max_risk_per_trade_percent": 1.0,
+                "daily_max_loss": 5000.0,
+                "capital": 100000.0
+            }
+        }
+        self.save_config(default_config)
+        return default_config
 
     def save_config(self, config):
         self.config = config
-        with open(self.config_path, 'w') as f:
-            json.dump(config, f, indent=4)
+        try:
+            with open(self.config_path, 'w') as f:
+                json.dump(config, f, indent=4)
+            self.logger.info("Configuration saved successfully.")
+            # Force broker re-initialization on next get_broker() if needed
+            self.broker = None
+        except Exception as e:
+            self.logger.error(f"Error saving config: {e}")
+
+    def update_parameters(self, new_params: dict):
+        current_config = self.load_config()
+        current_config.update(new_params)
+        self.save_config(current_config)
 
     def get_broker(self):
         if not self.broker:
@@ -29,25 +56,14 @@ class SessionManager:
             if mode == "live":
                 client_id = self.config.get("client_id")
                 access_token = self.config.get("access_token")
-                self.broker = DhanProvider(client_id, access_token)
-                if not self.broker.login():
-                    self.logger.warning("Live login failed, falling back to Paper.")
+                if client_id and access_token:
+                    self.broker = DhanProvider(client_id, access_token)
+                    if not self.broker.login():
+                        self.logger.warning("Live login failed, falling back to Paper.")
+                        self.broker = PaperBroker()
+                else:
+                    self.logger.warning("Credentials missing for live mode, using Paper.")
                     self.broker = PaperBroker()
             else:
                 self.broker = PaperBroker()
         return self.broker
-
-    def ensure_logged_in(self):
-        """
-        Periodically checks if the session is still active.
-        """
-        if self.broker and hasattr(self.broker, 'login'):
-            return self.broker.login()
-        return True
-
-    def automate_login(self):
-        totp_secret = self.config.get("totp_secret")
-        if totp_secret:
-            totp = pyotp.TOTP(totp_secret)
-            return totp.now()
-        return None
