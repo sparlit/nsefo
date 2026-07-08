@@ -1,4 +1,5 @@
 import pyotp
+import logging
 from dhanhq import dhanhq
 from .base import Broker
 from typing import List, Dict, Any, Optional
@@ -8,52 +9,66 @@ class DhanProvider(Broker):
         self.client_id = client_id
         self.access_token = access_token
         self.dhan = dhanhq(client_id, access_token)
+        self.logger = logging.getLogger("DhanProvider")
 
     def login(self, totp_secret: str = None):
-        # In a real scenario, we might need to handle session renewal
-        # Dhan API usually works with a long-lived access token or daily session
-        # If TOTP is required for session generation, handle it here.
-        if totp_secret:
-            totp = pyotp.TOTP(totp_secret)
-            # print(f"Generated TOTP: {totp.now()}")
-            # Implementation for session generation using TOTP if needed by Dhan API
-            pass
-        return True
+        """
+        Dhan access tokens are typically valid for a long period.
+        If a session needs to be refreshed via TOTP, it would be handled here.
+        """
+        try:
+            profile = self.dhan.get_fund_limits()
+            if profile.get('status') == 'success':
+                self.logger.info("Dhan Login Successful")
+                return True
+        except Exception as e:
+            self.logger.error(f"Dhan Login Failed: {e}")
+        return False
 
     def get_market_data(self, symbols: List[str]) -> Dict[str, Any]:
-        # Dhan implementation
+        """
+        Returns snapshot data for provided symbols.
+        Dhan get_quote takes security_id and exchange_segment.
+        For simplicity in this expert app, we assume symbols are passed as dicts
+        or we handle the mapping internally.
+        """
+        # Example: symbols = [{'security_id': '1333', 'exchange_segment': 'NSE_EQ'}]
         return self.dhan.get_quote(symbols)
 
-    def place_order(self, order_details: Dict[str, Any]) -> str:
+    def place_order(self, o: Dict[str, Any]) -> str:
+        """
+        o contains: symbol, qty, side, type, price, etc.
+        """
         response = self.dhan.place_order(
-            tag=order_details.get('tag', ''),
-            transaction_type=order_details.get('transaction_type'),
-            exchange_segment=order_details.get('exchange_segment'),
-            product_type=order_details.get('product_type'),
-            order_type=order_details.get('order_type'),
-            validity=order_details.get('validity', 'DAY'),
-            security_id=order_details.get('security_id'),
-            quantity=order_details.get('quantity'),
-            price=order_details.get('price', 0),
-            trigger_price=order_details.get('trigger_price', 0),
-            after_market_order=order_details.get('amo', False),
-            amo_time=order_details.get('amo_time', 'OPEN'),
-            bo_profit_value=order_details.get('bo_profit_value', 0),
-            bo_stop_loss_Value=order_details.get('bo_stop_loss_value', 0),
-            drv_expiry_date=order_details.get('expiry_date', None),
-            drv_options_type=order_details.get('options_type', None),
-            drv_strike_price=order_details.get('strike_price', None)
+            tag=o.get('tag', 'NSEFO_APP'),
+            transaction_type=o.get('side', 'BUY'), # BUY or SELL
+            exchange_segment=o.get('exchange_segment', 'NSE_FNO'),
+            product_type=o.get('product_type', 'MARGIN'),
+            order_type=o.get('order_type', 'MARKET'),
+            validity='DAY',
+            security_id=str(o.get('security_id')),
+            quantity=int(o.get('quantity')),
+            price=float(o.get('price', 0)),
+            trigger_price=float(o.get('trigger_price', 0)),
+            drv_expiry_date=o.get('expiry_date'),
+            drv_options_type=o.get('option_type'),
+            drv_strike_price=o.get('strike_price')
         )
-        return response.get('data', {}).get('orderId')
+        if response.get('status') == 'success':
+            return response['data']['orderId']
+        else:
+            raise Exception(f"Order placement failed: {response.get('remarks')}")
 
     def get_order_status(self, order_id: str) -> Dict[str, Any]:
         return self.dhan.get_order_by_id(order_id)
 
     def get_positions(self) -> List[Dict[str, Any]]:
-        return self.dhan.get_positions()
+        resp = self.dhan.get_positions()
+        return resp.get('data', []) if resp.get('status') == 'success' else []
 
     def get_holdings(self) -> List[Dict[str, Any]]:
-        return self.dhan.get_holdings()
+        resp = self.dhan.get_holdings()
+        return resp.get('data', []) if resp.get('status') == 'success' else []
 
     def cancel_order(self, order_id: str):
         return self.dhan.cancel_order(order_id)

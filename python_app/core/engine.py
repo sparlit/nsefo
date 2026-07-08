@@ -1,31 +1,51 @@
 import nsefo_core
 import pandas as pd
+import logging
 from typing import List, Dict, Any
 
 class BrainEngine:
     def __init__(self):
-        pass
+        self.logger = logging.getLogger("BrainEngine")
 
     def analyze_symbol(self, df: pd.DataFrame) -> Dict[str, Any]:
         """
-        Analyzes a single symbol using Rust-powered indicators.
+        Analyzes a single symbol using real Rust-powered indicators.
         """
-        close_data = df['close'].tolist()
-        ema_20 = nsefo_core.get_ema_list(close_data, 20)
+        if df.empty or len(df) < 14:
+            return {"probability": 0.5, "signal": "NEUTRAL"}
 
-        # In a real scenario, we'd pass multiple indicators to calculate_probability
-        # For now, let's mock it with the last close vs last ema
-        indicators = [1.0 if close_data[-1] > ema_20[-1] else -1.0]
-        probability = nsefo_core.calculate_probability(indicators)
+        try:
+            close = df['close'].astype(float).tolist()
+            high = df['high'].astype(float).tolist()
+            low = df['low'].astype(float).tolist()
 
-        return {
-            "last_ema": ema_20[-1],
-            "probability": probability,
-            "signal": "BUY" if probability > 0.7 else "SELL" if probability < 0.3 else "NEUTRAL"
-        }
+            # Calculate RSI
+            rsi = nsefo_core.get_rsi_list(close, 14)
 
-    def batch_analyze(self, data_map: Dict[str, pd.DataFrame]) -> Dict[str, Any]:
-        results = {}
-        for symbol, df in data_map.items():
-            results[symbol] = self.analyze_symbol(df)
-        return results
+            # Calculate Supertrend
+            # Using standard 10, 3 parameters
+            st_values, trends = nsefo_core.get_supertrend(high, low, close, 10, 3.0)
+
+            # Current status from the most recent completed bar
+            curr_trend = trends[-1]
+            curr_rsi = rsi[-1]
+
+            # Indicators for probability assessment
+            trend_score = float(curr_trend)
+
+            rsi_score = 0.0
+            if curr_rsi < 30: rsi_score = 1.0
+            elif curr_rsi > 70: rsi_score = -1.0
+
+            probability = nsefo_core.calculate_probability([trend_score, rsi_score])
+
+            return {
+                "probability": probability,
+                "signal": "BUY" if (probability > 0.75 and curr_trend == 1) else "SELL" if (probability < 0.25 and curr_trend == -1) else "NEUTRAL",
+                "rsi": round(curr_rsi, 2),
+                "trend": "UP" if curr_trend == 1 else "DOWN",
+                "st_value": round(st_values[-1], 2)
+            }
+        except Exception as e:
+            self.logger.error(f"Analysis failed: {e}")
+            return {"probability": 0.5, "signal": "ERROR"}

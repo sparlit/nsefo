@@ -1,64 +1,64 @@
 import time
+import logging
 from typing import Dict, Any, List
 from .engine import BrainEngine
+from .risk_manager import RiskManager
 from ..broker.base import Broker
 
 class Coordinator:
-    def __init__(self, broker: Broker, engine: BrainEngine):
+    def __init__(self, broker: Broker, engine: BrainEngine, risk_manager: RiskManager):
         self.broker = broker
         self.engine = engine
+        self.risk_manager = risk_manager
         self.active_trades: Dict[str, Dict[str, Any]] = {}
-        self.risk_settings = {
-            "max_drawdown": 0.05,
-            "max_risk_per_trade": 0.02,
-            "daily_max_loss": 5000
-        }
+        self.logger = logging.getLogger("Coordinator")
 
-    def track_trades(self):
+    def monitor_market(self, symbols_data: Dict[str, Any]):
         """
-        Independent brain tracking orders and trailing SL/TP.
+        Coordinates between brains to find and confirm trades.
+        """
+        for symbol, df in symbols_data.items():
+            analysis = self.engine.analyze_symbol(df)
+            if analysis['probability'] > 0.85:
+                # Strong signal found, move to confirmation
+                self.logger.info(f"Strong Signal for {symbol}: {analysis}")
+                # In real app, this would push to 'awaiting_confirmation' in dashboard
+
+    def track_trades(self, current_prices: Dict[str, float]):
+        """
+        Independent brain tracking orders and maintaining SL/TP.
         """
         for order_id, trade in list(self.active_trades.items()):
-            status = self.broker.get_order_status(order_id)
-            # Update SL/TP logic here
-            self.apply_trailing_sl(order_id, trade)
+            symbol = trade['symbol']
+            price = current_prices.get(symbol)
+            if not price: continue
 
-    def apply_trailing_sl(self, order_id: str, trade: Dict[str, Any]):
-        # Implementation for trailing SL/TP
-        # If price moves in favor, update SL in broker
-        pass
+            # Update Trailing SL
+            self.apply_trailing_sl(order_id, trade, price)
 
-    def validate_risk(self, trade_proposal: Dict[str, Any]) -> bool:
-        # Check against risk_settings
-        return True
+    def apply_trailing_sl(self, order_id: str, trade: Dict[str, Any], current_price: float):
+        side = trade['side']
+        entry = trade['entry_price']
+        sl = trade['sl']
+        step = trade.get('trailing_step', 1.0)
 
-    def execute_confirmed_trade(self, trade_proposal: Dict[str, Any]):
-        if self.validate_risk(trade_proposal):
-            order_id = self.broker.place_order(trade_proposal)
-            self.active_trades[order_id] = trade_proposal
+        if side == 'BUY' and current_price > entry + step:
+            new_sl = current_price - (entry - sl)
+            if new_sl > sl:
+                trade['sl'] = new_sl
+                self.logger.info(f"Trailing SL Updated for {order_id}: {new_sl}")
+        elif side == 'SELL' and current_price < entry - step:
+            new_sl = current_price + (sl - entry)
+            if new_sl < sl:
+                trade['sl'] = new_sl
+                self.logger.info(f"Trailing SL Updated for {order_id}: {new_sl}")
+
+    def execute_confirmed_trade(self, proposal: Dict[str, Any]):
+        # Final risk check before execution
+        risk = self.risk_manager.assess_trade(proposal['price'], proposal['sl'], proposal['quantity'])
+        if risk['is_safe']:
+            order_id = self.broker.place_order(proposal)
+            proposal['order_id'] = order_id
+            self.active_trades[order_id] = proposal
             return order_id
         return None
-
-    def update_trailing_stops(self, current_prices: Dict[str, f64]):
-        for order_id, trade in self.active_trades.items():
-            symbol = trade.get('symbol')
-            current_price = current_prices.get(symbol)
-            if not current_price:
-                continue
-
-            entry_price = trade.get('entry_price')
-            sl = trade.get('sl')
-            tp = trade.get('tp')
-            trailing_step = trade.get('trailing_step', 0)
-
-            if trade['side'] == 'BUY':
-                if current_price > entry_price + trailing_step:
-                    new_sl = current_price - (entry_price - sl)
-                    if new_sl > sl:
-                        trade['sl'] = new_sl
-                        # self.broker.modify_order(...)
-            elif trade['side'] == 'SELL':
-                if current_price < entry_price - trailing_step:
-                    new_sl = current_price + (sl - entry_price)
-                    if new_sl < sl:
-                        trade['sl'] = new_sl

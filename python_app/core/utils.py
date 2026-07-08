@@ -1,6 +1,9 @@
 import threading
 import time
-from typing import Any, Callable
+import logging
+from typing import Any, Optional
+
+logger = logging.getLogger("Utils")
 
 def timed_input_with_default(prompt: str, suggestion: str, timeout: int = 10) -> str:
     """
@@ -12,9 +15,13 @@ def timed_input_with_default(prompt: str, suggestion: str, timeout: int = 10) ->
 
     def get_input():
         try:
-            result[0] = input(f"{prompt} (Default: {suggestion}) [Timeout {timeout}s]: ")
+            # We use a wrapper to handle cases where input() is not available
+            val = input(f"{prompt} (Default: {suggestion}) [Timeout {timeout}s]: ")
+            result[0] = val
         except EOFError:
-            pass
+            logger.debug("Input stream ended (EOF).")
+        except Exception as e:
+            logger.debug(f"Input error: {e}")
         finally:
             event.set()
 
@@ -23,13 +30,13 @@ def timed_input_with_default(prompt: str, suggestion: str, timeout: int = 10) ->
     thread.start()
 
     # Wait for the event OR the timeout
-    event.wait(timeout)
+    signaled = event.wait(timeout)
 
     if result[0] is None:
-        if not event.is_set():
+        if not signaled:
             print(f"\n[Timeout reached] Using recommended default: {suggestion}")
         else:
-            print(f"\n[No terminal input available] Using recommended default: {suggestion}")
+            print(f"\n[Manual input skipped] Using recommended default: {suggestion}")
         return suggestion
     return result[0]
 
