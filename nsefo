@@ -1,2 +1,3 @@
 #!/bin/bash
-./run_app.sh "$@"
+export PYTHONPATH=$PYTHONPATH:.
+python3 start_master_pro.py "$@"

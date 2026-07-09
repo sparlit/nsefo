@@ -1,2 +1,3 @@
 @echo off
-call run_app.bat %%*
+set PYTHONPATH=%PYTHONPATH%;.
+python start_master_pro.py %*

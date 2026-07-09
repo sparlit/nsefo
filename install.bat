@@ -1,2 +1,2 @@
 @echo off
-call setup.bat %%*
+call setup.bat %*
