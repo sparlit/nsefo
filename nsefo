@@ -1,4 +1,3 @@
 #!/bin/bash
-# NSEFO Master Pro Expert System - Single Word Command
 export PYTHONPATH=$PYTHONPATH:.
 python3 start_master_pro.py "$@"
