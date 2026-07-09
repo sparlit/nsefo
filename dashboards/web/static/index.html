@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NSEFO Master Pro Expert Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .kanban-col { min-height: 500px; background: #f3f4f6; border-radius: 8px; padding: 10px; }
+        .trade-card { background: white; border: 1px solid #e5e7eb; border-radius: 6px; padding: 12px; margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-900 font-sans">
+    <nav class="bg-blue-800 text-white p-4 flex justify-between items-center shadow-lg">
+        <h1 class="text-xl font-bold">NSEFO MASTER PRO EXPERT</h1>
+        <div class="space-x-4">
+            <button onclick="showTab('terminal')" class="hover:underline">Terminal</button>
+            <button onclick="showTab('settings')" class="hover:underline">Configuration</button>
+        </div>
+    </nav>
+
+    <div id="terminal" class="p-6">
+        <div class="grid grid-cols-4 gap-4">
+            <div>
+                <h3 class="font-bold mb-2">SCANNING</h3>
+                <div id="col-scanning" class="kanban-col"></div>
+            </div>
+            <div>
+                <h3 class="font-bold mb-2">SIGNALS</h3>
+                <div id="col-signal" class="kanban-col"></div>
+            </div>
+            <div>
+                <h3 class="font-bold mb-2">ACTIVE</h3>
+                <div id="col-active" class="kanban-col"></div>
+            </div>
+            <div>
+                <h3 class="font-bold mb-2">CLOSED</h3>
+                <div id="col-closed" class="kanban-col"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="settings" class="hidden p-6 max-w-2xl mx-auto">
+        <div class="bg-white p-8 rounded-lg shadow-md">
+            <h2 class="text-2xl font-bold mb-6">System Configuration</h2>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium">Trading Mode</label>
+                    <select id="cfg-mode" class="w-full p-2 border rounded">
+                        <option value="paper">Paper Trading</option>
+                        <option value="live">Live Trading</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium">Dhan Client ID</label>
+                    <input type="text" id="cfg-client-id" class="w-full p-2 border rounded">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium">Access Token</label>
+                    <input type="password" id="cfg-token" class="w-full p-2 border rounded">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium">Operational Capital</label>
+                    <input type="number" id="cfg-capital" class="w-full p-2 border rounded">
+                </div>
+                <button onclick="saveConfig()" class="w-full bg-blue-600 text-white p-3 rounded font-bold hover:bg-blue-700">APPLY & RESTART ENGINE</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function showTab(tabId) {
+            document.getElementById('terminal').classList.add('hidden');
+            document.getElementById('settings').classList.add('hidden');
+            document.getElementById(tabId).classList.remove('hidden');
+            if(tabId === 'settings') loadConfig();
+        }
+
+        async function loadConfig() {
+            const res = await fetch('/config');
+            const data = await res.json();
+            document.getElementById('cfg-mode').value = data.mode;
+            document.getElementById('cfg-client-id').value = data.client_id;
+            document.getElementById('cfg-token').value = data.access_token;
+            document.getElementById('cfg-capital').value = data.risk.capital;
+        }
+
+        async function saveConfig() {
+            const config = {
+                mode: document.getElementById('cfg-mode').value,
+                client_id: document.getElementById('cfg-client-id').value,
+                access_token: document.getElementById('cfg-token').value,
+                risk: { capital: parseFloat(document.getElementById('cfg-capital').value) }
+            };
+            await fetch('/config', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(config)
+            });
+            alert('Settings Applied Successfully');
+        }
+
+        // WebSocket for live updates
+        const ws = new WebSocket(`ws://${window.location.host}/ws`);
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            updateTerminal(data.dashboard);
+        };
+
+        function updateTerminal(state) {
+            // Simplified update logic for demo
+        }
+    </script>
+</body>
+</html>
