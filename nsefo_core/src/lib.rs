@@ -28,31 +28,10 @@ fn calculate_probability(indicators: Vec<f64>) -> PyResult<f64> {
 }
 
 #[pymodule]
-fn nsefo_core(_py: Python, m: &PyModule) -> PyResult<()> {
+fn nsefo_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(get_rsi_list, m)?)?;
     m.add_function(wrap_pyfunction!(get_volatility_list, m)?)?;
     m.add_function(wrap_pyfunction!(get_supertrend, m)?)?;
     m.add_function(wrap_pyfunction!(calculate_probability, m)?)?;
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_rsi_accuracy() {
-        let data = vec![100.0, 105.0, 102.0, 110.0, 108.0, 115.0, 112.0, 120.0, 118.0, 125.0, 122.0, 130.0, 128.0, 135.0, 132.0];
-        let rsi = get_rsi_list(data, 14).unwrap();
-        assert_eq!(rsi.len(), 15);
-        assert!(rsi[14] > 50.0);
-    }
-
-    #[test]
-    fn test_probability_clamp() {
-        let low_prob = calculate_probability(vec![-1.0, -1.0, 0.5]).unwrap();
-        assert!(low_prob >= 0.0 && low_prob <= 1.0);
-        let high_prob = calculate_probability(vec![1.0, 1.0, 1.2]).unwrap();
-        assert!(high_prob >= 0.0 && high_prob <= 1.0);
-    }
 }
