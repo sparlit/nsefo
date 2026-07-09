@@ -1,134 +1,113 @@
-# NSE F&O Master Pro Expert Trading System
+# 🏆 NSE F&O Master Pro Expert Trading System
 
-A professional-grade, high-performance trading application for NSE Options and F&O, built with a hybrid **Python + Rust** architecture. Designed for expert traders who require ultra-fast technical analysis, multi-brain coordination, and a sophisticated Kanban-style operational dashboard.
-
----
-
-## 🚀 Detailed System Information
-
-The **NSE F&O Master Pro Expert** is not just a trading tool; it's a multi-component neural coordination engine.
-
-### Core Architecture:
-- **Rust Logic Engine (The Brains)**: High-speed technical analysis core implemented in Rust for sub-millisecond calculation latency. It handles Supertrend, RSI, ATR, and Standard Deviation.
-- **Multi-Brain Synthesis**: The system uses three specialized brains:
-    1. **Trend Brain**: Identifies market directionality.
-    2. **Momentum Brain**: Detects overextensions and reversal points.
-    3. **Volatility Brain**: Measures market noise to adjust conviction and position sizing.
-- **Independent Coordinator Brain**: A separate execution and tracking thread that coordinates with other brains and the broker to maintain orders, manage dynamic trailing SL/TP, and ensure capital protection.
-- **Expert NLP Parser**: Allows traders to execute orders using natural English (e.g., *"go long nifty 24200 calls"*).
-- **Dual Dashboard Integration**: Provides a synchronized experience across Desktop (PySide6) and Web (FastAPI/WebSocket).
+A professional-grade, high-performance automated trading environment for NSE Options and F&O, powered by a hybrid **Python + Rust** architecture. This system is designed for elite traders who demand ultra-fast calculations, sophisticated risk management, and a transparent, Kanban-style operational dashboard.
 
 ---
 
-## ✨ Core Features
-- **Compatible with Dhan API**: Full live execution using modern `DhanContext` and Marketfeed WebSockets.
-- **Professional Paper Trading**: Full simulation environment utilizing real-time live market data.
-- **Dynamic Kanban Dashboard**: Visualize trades through "Scanning", "Signal", "Active", and "Closed" stages.
-- **Expert Risk Management**: Automatic calculation of win probability and risk-per-trade assessment.
-- **Fixed Lot Control**: Manually configurable lot sizes (default 1) adjustable via the Configuration Tab.
-- **No-Login Experience**: Automated session handling with TOTP support; no need to keep the broker's login page open.
-- **Timed Auto-Confirmation**: 10-second safety window for all trades with intelligent system recommendations.
+## 📊 Detailed Project Report
+
+### 1. Architectural Philosophy
+The system is built on a "Coordination of Brains" model. By offloading heavy technical analysis to **Rust**, we achieve sub-millisecond calculation latency, essential for the volatile NSE F&O market.
+
+- **Hybrid Engine**: Python handles high-level coordination, NLP, and UI synchronization, while the Rust Core (`nsefo_core`) performs threaded calculations for indicators and probability synthesis.
+- **Multi-Brain Intelligence**:
+    - **Trend Brain (Rust)**: Uses optimized Supertrend and ATR algorithms to determine directional bias.
+    - **Momentum Brain (Rust)**: Analyzes RSI and price velocity to detect overextensions.
+    - **Volatility Brain (Rust)**: Measures market standard deviation to adjust signal conviction.
+    - **Option Brain (OpenGreeks)**: Real-time calculation of Delta and other Greeks to refine option entry probability.
+- **Independent Coordinator**: Operates as a "Supervisor" brain that tracks orders, manages dynamic trailing SL/TP, and enforces capital protection rules autonomously.
+
+### 2. Operational Reality
+This is a **zero-illusion** codebase. Every component is operational, using real-world broker SDKs (Dhan via Fenix) and real-time Marketfeed WebSockets. There are no mock placeholders in the execution path.
 
 ---
 
 ## 📋 Pre-requisites
-Before installing, ensure you have:
-1. **Python 3.10+**
-2. **Rust Toolchain** (Cargo & Rustc) for building the performance core.
-3. **Maturin**: For bridging Rust and Python (`pip install maturin`).
-4. **Dhan API Credentials**: Client ID and Access Token from the Dhan API console.
-5. **TOTP Secret**: Found in Dhan security settings (required for automated login).
+
+Before initiating the system, the following environment must be prepared:
+
+### Software Requirements
+- **Python 3.10+**: Optimized for async/await performance.
+- **Rust Toolchain (Cargo/Rustc)**: Required to compile the high-performance core.
+- **Maturin**: Python package (`pip install maturin`) for Rust-Python bridging.
+
+### Data & Access
+- **Dhan API Credentials**: Valid `Client ID` and `Access Token`.
+- **TOTP Secret Key**: Required for automated session renewal (Found in Dhan Security Settings).
+- **Market Access**: NSE F&O segment enabled on your Dhan account.
 
 ---
 
-## 🛠️ Installation
+## 🛠️ Step-by-Step How-To
 
-1. **Clone the Repository**:
-   ```bash
-   git clone <repo-url>
-   cd nsefo
-   ```
-
-2. **Set up Virtual Environment**:
-   ```bash
-   python3 -m venv .venv
-   source .venv/bin/activate
-   ```
-
-3. **Install Python Dependencies**:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. **Build and Install the Rust Core**:
-   ```bash
-   cd nsefo_core
-   maturin build --release
-   pip install target/wheels/*.whl
-   cd ..
-   ```
-
----
-
-## ⚙️ Configuration
-
-1. **Launch the Configuration Dashboard**:
-   Open the application and navigate to the **Settings** or **System Config** tab.
-
-2. **Required Parameters**:
-   - **Mode**: Toggle between `paper` and `live`.
-   - **Dhan Client ID**: Your 10-digit Dhan ID.
-   - **Access Token**: Your long-lived API token.
-   - **Operational Capital**: Total capital for risk calculations.
-   - **Fixed Lot Size**: Set your preferred manual lot count.
-
-*Settings are automatically persisted to `config.json`.*
-
----
-
-## 📖 Usage Guide
-
-### Starting the Engine
+### 1. Environment Setup
 ```bash
-export PYTHONPATH=$PYTHONPATH:.
-python3 python_app/main.py
+# Clone the repository
+git clone <repository-url>
+cd nsefo
+
+# Create and activate virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
+
+# Install requirements
+pip install -r requirements.txt
 ```
 
-### Executing Manual Trades (NLP)
-Use simple English commands directly from the terminal or dashboard input:
-- *"buy nifty 24200 ce"*
-- *"go long banknifty 48000 calls"*
-- *"short finnifty 21000 pe"*
+### 2. Compiling the Rust Core
+This step is critical for the system's "Brain" to function at speed.
+```bash
+cd nsefo_core
+maturin build --release
+pip install target/wheels/*.whl
+cd ..
+```
 
-### Monitoring
-- **Scanning**: The system continuously monitors the watchlist (NIFTY, BANKNIFTY, FINNIFTY) for high-conviction signals.
-- **Active Trades**: Once a trade is executed, the **Coordinator Brain** takes over, tracking real-time price moves and updating trailing stop-losses.
-- **Confirmation**: All trades require a 10s confirmation. If no action is taken, the system uses the expert recommendation as the default choice.
+### 3. Single Command Launch & Configuration
+The system features a guided interactive launcher.
+```bash
+python3 start_master_pro.py
+```
+- The launcher will ask for your **Dhan ID**, **Token**, and **Capital** limits if not already configured.
+- It will automatically perform a **Connectivity & Integrity Check**.
+- Upon success, it will launch the Web Terminal, the Engine, and the Desktop Dashboard simultaneously.
 
 ---
 
-## 📦 Dependencies
-- **Backend**: Python 3.10+, FastAPI, Uvicorn, Pydantic.
-- **Performance Core**: Rust (2021 edition), PyO3, `ta` (Technical Analysis), `ndarray`, `rayon`.
-- **Broker Integration**: `dhanhq` SDK, `marketfeed`.
-- **UI**: PySide6 (Desktop), Tailwind CSS (Web).
-- **Data**: Pandas, Numpy.
+## 📖 Usage & Interaction
+
+### Natural Language Execution (NLP)
+Simply instruct the system in plain English:
+- *"Buy Nifty 24500 CE"* -> System calculates Greeks, probability, and risk before asking for confirmation.
+- *"Go long banknifty 48000 calls"* -> Professional variation parsing.
+- *"Short Finnifty"* -> Market-order logic.
+
+### Expert Dashboards
+- **Kanban View**: Track trades through **Scanning -> Signal -> Active -> Closed**.
+- **Live Terminal**: High-fidelity terminal for active order monitoring.
+- **System Config**: Real-time updates to Fixed Lots and risk parameters without restarting the engine.
 
 ---
 
 ## 🔍 Post-requisites
-1. **Connectivity Check**: Ensure your internet connection is stable for the Marketfeed WebSocket.
-2. **Risk Verification**: Always check the "Risk Assessment" report before confirming high-lot trades.
-3. **Log Monitoring**: Monitor `TradingApp.log` for real-time brain synthesis reports.
+
+1. **Connectivity Monitoring**: Ensure your terminal shows "Marketfeed: READY". High-frequency trading requires a stable low-latency connection.
+2. **One-Time TOTP Setup**: After first launch, ensure your TOTP secret is saved in the configuration for the "No-Login" experience to persist across days.
+3. **Log Review**: Periodically review the `system_logs` in the dashboard for brain conviction reports (e.g., *"Neural Cluster Analysis: 92% Conviction"*).
 
 ---
 
-## 🗺️ Roadmap
-- [ ] **Greeks Neural Brain**: Implementation of real-time Delta/Gamma/Theta calculations.
-- [ ] **Historical Backtesting Engine**: Test Rust brains against years of 1-minute data.
-- [ ] **Multi-Broker Abstraction**: Support for Zerodha, AngelOne, and Upstox.
-- [ ] **AI-Pattern Recognition**: Vision-based candle pattern recognition in Rust.
+## 📦 System Dependencies
+- **Analysis**: `nsefo_core` (Custom Rust), `OpenGreeks` (Delta/Options), `Pandas/Numpy`.
+- **Brokerage**: `Fenix` (Multi-broker abstraction), `dhanhq` (Official SDK).
+- **Dashboards**: `FastAPI` (WebSocket backend), `TailwindCSS` (UI), `PySide6` (Desktop).
+- **Security**: `PyOTP` (TOTP), `PyCryptodome`.
 
 ---
 
-**Disclaimer**: Trading in F&O involves high risk. This system is an expert-level tool; ensure your risk parameters are correctly configured before going live.
+## 🗺️ Future Roadmap
+- [ ] **Greeks Neutrality Brain**: Automated Delta-hedging logic.
+- [ ] **Custom Strategy Plug-ins**: Interface for users to add their own Rust-based brains.
+- [ ] **Multi-Account Coordination**: Manage and mirror trades across multiple broker accounts simultaneously.
+
+**Disclaimer**: F&O trading involves significant risk of loss. This software is provided for expert use only. Always verify your risk parameters in "Paper Mode" before switching to "Live Mode".
