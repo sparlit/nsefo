@@ -103,7 +103,7 @@ class TradingApp:
                 elif isinstance(d, list) and len(d) > 0:
                     return float(d[0].get('last_price', 0.0))
         except:
-            continue
+            logging.debug("LTP extraction failed")
         return 0.0
 
     def _get_context_data(self, symbol_info, last_price):
