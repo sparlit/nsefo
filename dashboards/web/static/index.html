@@ -2,87 +2,72 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NSEFO Master Pro Expert Dashboard</title>
+    <title>NSEFO MASTER PRO - Expert Console</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        .kanban-col { min-height: 500px; background: #f3f4f6; border-radius: 8px; padding: 10px; }
-        .trade-card { background: white; border: 1px solid #e5e7eb; border-radius: 6px; padding: 12px; margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .kanban-col { min-height: 600px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; }
+        .card { background: white; border-radius: 6px; padding: 15px; margin-bottom: 12px; border-left: 4px solid #3b82f6; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .card-buy { border-left-color: #10b981; }
+        .card-sell { border-left-color: #ef4444; }
     </style>
 </head>
-<body class="bg-gray-50 text-gray-900 font-sans">
-    <nav class="bg-blue-800 text-white p-4 flex justify-between items-center shadow-lg">
-        <h1 class="text-xl font-bold">NSEFO MASTER PRO EXPERT</h1>
-        <div class="space-x-4">
-            <button onclick="showTab('terminal')" class="hover:underline">Terminal</button>
-            <button onclick="showTab('settings')" class="hover:underline">Configuration</button>
+<body class="bg-slate-100 font-sans">
+    <nav class="bg-slate-900 text-white p-5 flex justify-between shadow-xl">
+        <div class="flex items-center space-x-4">
+            <span class="text-2xl font-black tracking-tighter text-blue-400">NSEFO MASTER PRO</span>
+            <span id="status-mode" class="px-2 py-1 bg-blue-500/20 text-blue-400 text-xs rounded border border-blue-400/30 uppercase font-bold">PAPER MODE</span>
+        </div>
+        <div class="space-x-8 flex items-center font-medium">
+            <button onclick="showTab('terminal')" class="hover:text-blue-400 transition">Terminal</button>
+            <button onclick="showTab('settings')" class="hover:text-blue-400 transition">Configuration</button>
+            <div class="pl-4 border-l border-slate-700">
+                <span class="text-slate-400 text-sm">Capital:</span>
+                <span id="stat-capital" class="text-emerald-400 font-bold">₹0.00</span>
+            </div>
         </div>
     </nav>
 
-    <div id="terminal" class="p-6">
-        <div class="grid grid-cols-4 gap-4">
-            <div>
-                <h3 class="font-bold mb-2">SCANNING</h3>
-                <div id="col-scanning" class="kanban-col"></div>
-            </div>
-            <div>
-                <h3 class="font-bold mb-2">SIGNALS</h3>
-                <div id="col-signal" class="kanban-col"></div>
-            </div>
-            <div>
-                <h3 class="font-bold mb-2">ACTIVE</h3>
-                <div id="col-active" class="kanban-col"></div>
-            </div>
-            <div>
-                <h3 class="font-bold mb-2">CLOSED</h3>
-                <div id="col-closed" class="kanban-col"></div>
-            </div>
+    <main id="terminal" class="p-8">
+        <div class="grid grid-cols-4 gap-6">
+            <div><h3 class="text-sm font-bold text-slate-500 mb-4 tracking-widest uppercase">Scanning</h3><div id="col-SCANNING" class="kanban-col"></div></div>
+            <div><h3 class="text-sm font-bold text-slate-500 mb-4 tracking-widest uppercase">Signals</h3><div id="col-SIGNAL" class="kanban-col"></div></div>
+            <div><h3 class="text-sm font-bold text-slate-500 mb-4 tracking-widest uppercase">Active</h3><div id="col-ACTIVE" class="kanban-col"></div></div>
+            <div><h3 class="text-sm font-bold text-slate-500 mb-4 tracking-widest uppercase">Closed</h3><div id="col-CLOSED" class="kanban-col"></div></div>
         </div>
-    </div>
+    </main>
 
-    <div id="settings" class="hidden p-6 max-w-2xl mx-auto">
-        <div class="bg-white p-8 rounded-lg shadow-md">
-            <h2 class="text-2xl font-bold mb-6">System Configuration</h2>
-            <div class="space-y-4">
-                <div>
-                    <label class="block text-sm font-medium">Trading Mode</label>
-                    <select id="cfg-mode" class="w-full p-2 border rounded">
-                        <option value="paper">Paper Trading</option>
-                        <option value="live">Live Trading</option>
-                    </select>
+    <section id="settings" class="hidden p-10 max-w-3xl mx-auto">
+        <div class="bg-white rounded-xl shadow-2xl overflow-hidden">
+            <div class="bg-slate-900 p-6 text-white"><h2 class="text-xl font-bold">System Credentials & Risk Control</h2></div>
+            <div class="p-8 space-y-6">
+                <div class="grid grid-cols-2 gap-6">
+                    <div><label class="block text-xs font-bold text-slate-500 uppercase mb-2">Trading Mode</label><select id="cfg-mode" class="w-full p-3 bg-slate-50 border rounded-lg focus:ring-2 focus:ring-blue-500"><option value="paper">Paper Trading</option><option value="live">Live Trading</option></select></div>
+                    <div><label class="block text-xs font-bold text-slate-500 uppercase mb-2">Dhan Client ID</label><input type="text" id="cfg-client-id" class="w-full p-3 bg-slate-50 border rounded-lg"></div>
                 </div>
-                <div>
-                    <label class="block text-sm font-medium">Dhan Client ID</label>
-                    <input type="text" id="cfg-client-id" class="w-full p-2 border rounded">
+                <div><label class="block text-xs font-bold text-slate-500 uppercase mb-2">API Access Token</label><input type="password" id="cfg-token" class="w-full p-3 bg-slate-50 border rounded-lg"></div>
+                <div class="grid grid-cols-2 gap-6">
+                    <div><label class="block text-xs font-bold text-slate-500 uppercase mb-2">Initial Capital</label><input type="number" id="cfg-capital" class="w-full p-3 bg-slate-50 border rounded-lg"></div>
+                    <div><label class="block text-xs font-bold text-slate-500 uppercase mb-2">Fixed Lots</label><input type="number" id="cfg-lots" class="w-full p-3 bg-slate-50 border rounded-lg"></div>
                 </div>
-                <div>
-                    <label class="block text-sm font-medium">Access Token</label>
-                    <input type="password" id="cfg-token" class="w-full p-2 border rounded">
-                </div>
-                <div>
-                    <label class="block text-sm font-medium">Operational Capital</label>
-                    <input type="number" id="cfg-capital" class="w-full p-2 border rounded">
-                </div>
-                <button onclick="saveConfig()" class="w-full bg-blue-600 text-white p-3 rounded font-bold hover:bg-blue-700">APPLY & RESTART ENGINE</button>
+                <button onclick="saveConfig()" class="w-full bg-blue-600 text-white py-4 rounded-lg font-black uppercase tracking-widest hover:bg-blue-700 shadow-lg shadow-blue-500/30 transition-all">Apply Operational Changes</button>
             </div>
         </div>
-    </div>
+    </section>
 
     <script>
-        function showTab(tabId) {
-            document.getElementById('terminal').classList.add('hidden');
-            document.getElementById('settings').classList.add('hidden');
-            document.getElementById(tabId).classList.remove('hidden');
-            if(tabId === 'settings') loadConfig();
+        function showTab(id) {
+            document.getElementById('terminal').classList.toggle('hidden', id !== 'terminal');
+            document.getElementById('settings').classList.toggle('hidden', id !== 'settings');
+            if(id === 'settings') loadConfig();
         }
 
         async function loadConfig() {
-            const res = await fetch('/config');
-            const data = await res.json();
-            document.getElementById('cfg-mode').value = data.mode;
-            document.getElementById('cfg-client-id').value = data.client_id;
-            document.getElementById('cfg-token').value = data.access_token;
-            document.getElementById('cfg-capital').value = data.risk.capital;
+            const r = await fetch('/config'); const d = await r.json();
+            document.getElementById('cfg-mode').value = d.mode;
+            document.getElementById('cfg-client-id').value = d.client_id;
+            document.getElementById('cfg-token').value = d.access_token;
+            document.getElementById('cfg-capital').value = d.risk.capital;
+            document.getElementById('cfg-lots').value = d.risk.fixed_lots;
         }
 
         async function saveConfig() {
@@ -90,26 +75,35 @@
                 mode: document.getElementById('cfg-mode').value,
                 client_id: document.getElementById('cfg-client-id').value,
                 access_token: document.getElementById('cfg-token').value,
-                risk: { capital: parseFloat(document.getElementById('cfg-capital').value) }
+                risk: {
+                    capital: parseFloat(document.getElementById('cfg-capital').value),
+                    fixed_lots: parseInt(document.getElementById('cfg-lots').value)
+                }
             };
-            await fetch('/config', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(config)
-            });
-            alert('Settings Applied Successfully');
+            await fetch('/config', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(config)});
+            location.reload();
         }
 
-        // WebSocket for live updates
         const ws = new WebSocket(`ws://${window.location.host}/ws`);
-        ws.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            updateTerminal(data.dashboard);
-        };
+        ws.onmessage = (e) => {
+            const d = JSON.parse(e.data);
+            document.getElementById('stat-capital').innerText = '₹' + d.dashboard.summary.capital.toLocaleString();
+            document.getElementById('status-mode').innerText = d.dashboard.summary.mode + ' mode';
 
-        function updateTerminal(state) {
-            // Simplified update logic for demo
-        }
+            // Render Kanban Columns
+            ['SCANNING', 'SIGNAL', 'ACTIVE', 'CLOSED'].forEach(col => {
+                const el = document.getElementById('col-' + col);
+                el.innerHTML = '';
+                (d.dashboard.kanban[col] || []).forEach(item => {
+                    const card = document.createElement('div');
+                    card.className = 'card ' + (item.side === 'BUY' ? 'card-buy' : item.side === 'SELL' ? 'card-sell' : '');
+                    card.innerHTML = typeof item === 'string' ? `<b>${item}</b><br><small class="text-slate-400 font-bold uppercase tracking-tighter">Analyzing Neural Clusters...</small>` :
+                                     `<div class="flex justify-between font-bold"><span>${item.symbol}</span><span class="${item.side === 'BUY' ? 'text-emerald-500' : 'text-rose-500'}">${item.side}</span></div>
+                                      <div class="text-xs text-slate-500 mt-2">Entry: ₹${item.price} | Qty: ${item.quantity || ''}</div>`;
+                    el.appendChild(card);
+                });
+            });
+        };
     </script>
 </body>
 </html>

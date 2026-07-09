@@ -20,34 +20,49 @@ class DhanProvider(Broker):
             return False
 
     def get_market_data(self, symbols: List[Dict[str, str]]) -> Dict[str, Any]:
-        # 'quote_data' instead of 'get_quote'
-        return self.dhan.quote_data(symbols)
+        try:
+            # Dhan quote_data usually expects a list of dictionaries with 'amc' and 'sid' or similar
+            # Re-mapping to ensure compatibility
+            return self.dhan.quote_data(symbols)
+        except Exception as e:
+            self.logger.error(f"Market Data Error: {e}")
+            return {"status": "error", "remarks": str(e)}
 
     def get_historical_data(self, symbol: Dict[str, str], interval: str, from_date: str, to_date: str) -> Any:
-        # 'intraday_minute_data' for intraday
-        return self.dhan.intraday_minute_data(
-            security_id=symbol['security_id'],
-            exchange_segment=symbol['exchange_segment'],
-            instrument_type='EQUITY'
-        )
+        try:
+            return self.dhan.intraday_minute_data(
+                security_id=symbol['security_id'],
+                exchange_segment=symbol['exchange_segment'],
+                instrument_type='EQUITY',
+                from_date=from_date,
+                to_date=to_date
+            )
+        except Exception as e:
+            self.logger.error(f"Historical Data Error: {e}")
+            return []
 
     def place_order(self, o: Dict[str, Any]) -> str:
-        response = self.dhan.place_order(
-            tag=o.get('tag', 'NSEFO_PRO'),
-            transaction_type=o.get('side', 'BUY'),
-            exchange_segment=o.get('exchange_segment', 'NSE_FNO'),
-            product_type=o.get('product_type', 'MARGIN'),
-            order_type=o.get('order_type', 'MARKET'),
-            validity='DAY',
-            security_id=str(o.get('security_id')),
-            quantity=int(o.get('quantity')),
-            price=float(o.get('price', 0)),
-            trigger_price=float(o.get('trigger_price', 0))
-        )
-        if response.get('status') == 'success':
-            return response['data']['orderId']
-        else:
-            raise Exception(f"Order failure: {response.get('remarks')}")
+        try:
+            response = self.dhan.place_order(
+                tag=o.get('tag', 'NSEFO_PRO'),
+                transaction_type=o.get('side', 'BUY'),
+                exchange_segment=o.get('exchange_segment', 'NSE_FNO'),
+                product_type=o.get('product_type', 'MARGIN'),
+                order_type=o.get('order_type', 'MARKET'),
+                validity='DAY',
+                security_id=str(o.get('security_id')),
+                quantity=int(o.get('quantity')),
+                price=float(o.get('price', 0)),
+                trigger_price=float(o.get('trigger_price', 0))
+            )
+            if response.get('status') == 'success':
+                return response['data']['orderId']
+            else:
+                self.logger.warning(f"Order Rejected: {response.get('remarks')}")
+                return ""
+        except Exception as e:
+            self.logger.error(f"Order failure: {e}")
+            return ""
 
     def get_order_status(self, order_id: str) -> Dict[str, Any]:
         return self.dhan.get_order_by_id(order_id)

@@ -24,10 +24,15 @@ class KanbanColumn(QFrame):
         self.scroll.setWidget(self.container)
         self.layout.addWidget(self.scroll)
 
-    def add_trade(self, trade_info: str):
-        label = QLabel(trade_info)
-        label.setStyleSheet("background: #e1f5fe; border-radius: 4px; padding: 10px; margin-bottom: 5px; color: #01579b;")
-        self.list_layout.insertWidget(0, label)
+    def update_items(self, new_items: list):
+        for i in reversed(range(self.list_layout.count() - 1)):
+            w = self.list_layout.itemAt(i).widget()
+            if w: w.setParent(None)
+
+        for item in new_items:
+            label = QLabel(str(item))
+            label.setStyleSheet("background: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px; padding: 12px; margin-bottom: 8px; color: #1e293b; font-weight: 500;")
+            self.list_layout.insertWidget(0, label)
 
 class ConfigTab(QWidget):
     def __init__(self, sm: SessionManager):
@@ -39,83 +44,73 @@ class ConfigTab(QWidget):
         self.mode = QComboBox()
         self.mode.addItems(["paper", "live"])
         self.mode.setCurrentText(sm.config.get("mode", "paper"))
-
         self.cid = QLineEdit(sm.config.get("client_id", ""))
         self.token = QLineEdit(sm.config.get("access_token", ""))
         self.token.setEchoMode(QLineEdit.Password)
+        self.lots = QLineEdit(str(sm.config['risk'].get('fixed_lots', 1)))
 
-        self.capital = QLineEdit(str(sm.config['risk'].get('capital', 1000000)))
-        self.fixed_lots = QLineEdit(str(sm.config['risk'].get('fixed_lots', 1)))
-
-        self.save_btn = QPushButton("SAVE & SYNC SYSTEM")
-        self.save_btn.setStyleSheet("background-color: #2e7d32; color: white; font-weight: bold; padding: 12px; border-radius: 5px;")
+        self.save_btn = QPushButton("COMMIT OPERATIONAL SETTINGS")
+        self.save_btn.setStyleSheet("background: #166534; color: white; padding: 15px; font-weight: 900; border-radius: 8px;")
         self.save_btn.clicked.connect(self.save)
 
-        self.form.addRow("Trading Mode:", self.mode)
-        self.form.addRow("Dhan Client ID:", self.cid)
-        self.form.addRow("API Access Token:", self.token)
-        self.form.addRow("Operational Capital:", self.capital)
-        self.form.addRow("<b>Fixed Lot Count:</b>", self.fixed_lots)
-
+        self.form.addRow("TRADING MODE:", self.mode)
+        self.form.addRow("DHAN CLIENT ID:", self.cid)
+        self.form.addRow("API ACCESS TOKEN:", self.token)
+        self.form.addRow("FIXED LOT SIZE:", self.lots)
         self.layout.addLayout(self.form)
         self.layout.addWidget(self.save_btn)
         self.layout.addStretch()
 
     def save(self):
         new_cfg = self.sm.config
-        new_cfg.update({
-            "mode": self.mode.currentText(),
-            "client_id": self.cid.text(),
-            "access_token": self.token.text()
-        })
-        new_cfg['risk']['capital'] = float(self.capital.text() if self.capital.text() else 1000000)
-        new_cfg['risk']['fixed_lots'] = int(self.fixed_lots.text() if self.fixed_lots.text() else 1)
+        new_cfg.update({"mode": self.mode.currentText(), "client_id": self.cid.text(), "access_token": self.token.text()})
+        new_cfg['risk']['fixed_lots'] = int(self.lots.text())
         self.sm.save_config(new_cfg)
-        logging.info("Desktop UI: Configuration persisted successfully.")
+        logging.info("Configuration State Synchronized.")
 
 class DashboardWindow(QMainWindow):
-    def __init__(self, sm: SessionManager, coordinator=None):
+    def __init__(self, sm: SessionManager, app_instance):
         super().__init__()
         self.sm = sm
-        self.coordinator = coordinator
-        self.setWindowTitle("NSEFO MASTER PRO - TRADING TERMINAL [STABLE]")
+        self.app = app_instance
+        self.setWindowTitle("NSEFO MASTER PRO EXPERT - PRODUCTION TERMINAL")
         self.resize(1200, 850)
+        self.setStyleSheet("QMainWindow { background-color: #f1f5f9; }")
 
         self.tabs = QTabWidget()
         self.setCentralWidget(self.tabs)
-
         self.terminal = QWidget()
         self.terminal_layout = QVBoxLayout(self.terminal)
 
         self.kanban = QHBoxLayout()
         self.cols = {
             "SCANNING": KanbanColumn("SCANNING"),
-            "SIGNAL": KanbanColumn("SIGNALS"),
-            "ACTIVE": KanbanColumn("ACTIVE"),
-            "CLOSED": KanbanColumn("CLOSED")
+            "SIGNAL": KanbanColumn("CONVICTION SIGNALS"),
+            "ACTIVE": KanbanColumn("ACTIVE ORDERS"),
+            "CLOSED": KanbanColumn("CLOSED POSITIONS")
         }
         for c in self.cols.values(): self.kanban.addWidget(c)
-
         self.terminal_layout.addLayout(self.kanban)
-        self.tabs.addTab(self.terminal, "EXPERT TERMINAL")
-        self.tabs.addTab(ConfigTab(self.sm), "SYSTEM SETTINGS")
+
+        self.tabs.addTab(self.terminal, "LIVE TERMINAL")
+        self.tabs.addTab(ConfigTab(self.sm), "SYSTEM CONFIG")
 
         self.timer = QTimer()
-        self.timer.timeout.connect(self.sync_live_data)
-        self.timer.start(2000)
+        self.timer.timeout.connect(self.refresh)
+        self.timer.start(1000)
 
-    def sync_live_data(self):
-        """Synchronizes Terminal UI with the live coordinator state."""
-        if self.coordinator:
-             # Real-time synchronization logic
-             for order_id, trade in self.coordinator.active_trades.items():
-                 self.cols["ACTIVE"].add_trade(f"{trade['symbol']} | {trade['side']} | Qty: {trade['quantity']}")
-        else:
-             logging.debug("Dashboard awaiting coordinator link...")
+    def refresh(self):
+        coord = self.app.coordinator
+        active_list = [f"<b>{t['symbol']}</b><br>{t['side']} @ {t['price']}<br><small>Qty: {t['quantity']}</small>" for t in coord.active_trades.values()]
+        self.cols["ACTIVE"].update_items(active_list)
+
+        scanning_list = [f"<b>{s}</b><br><small>Neural Cluster Analysis Active...</small>" for s in self.app.watch_list]
+        self.cols["SCANNING"].update_items(scanning_list)
 
 if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    sm = SessionManager()
-    win = DashboardWindow(sm)
+    from python_app.main import TradingApp
+    qt_app = QApplication(sys.argv)
+    trade_app = TradingApp()
+    win = DashboardWindow(trade_app.session, trade_app)
     win.show()
-    # Lifecycle managed by entry point
+    # sys.exit(qt_app.exec())

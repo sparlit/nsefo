@@ -6,22 +6,15 @@ import json
 import asyncio
 import os
 from python_app.broker.session_manager import SessionManager
+# Global reference to the trading application instance
+# In real prod, this is injected or managed via a singleton
+from python_app.main import TradingApp
 
 app = FastAPI()
 session_manager = SessionManager()
+trade_engine = TradingApp()
 
-# Serve static files for the dashboard UI
 app.mount("/static", StaticFiles(directory="dashboards/web/static"), name="static")
-
-class LiveState:
-    def __init__(self):
-        self.state = {
-            "summary": {"capital": 0, "total_pnl": 0.0, "active_trades_count": 0, "daily_drawdown": 0.0},
-            "kanban": {"SCANNING": [], "SIGNAL": [], "CONFIRMATION": [], "ACTIVE": [], "CLOSED": []},
-            "pnl_history": []
-        }
-
-live_state = LiveState()
 
 @app.get("/", response_class=HTMLResponse)
 async def get_index():
@@ -42,11 +35,30 @@ async def update_config(request: Request):
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     while True:
+        # Pushing REAL data from the Coordinator and Engine
+        active_trades = [
+            {"symbol": t['symbol'], "side": t['side'], "price": t['price']}
+            for t in trade_engine.coordinator.active_trades.values()
+        ]
+
+        state = {
+            "summary": {
+                "capital": session_manager.config['risk']['capital'],
+                "active_trades_count": len(active_trades),
+                "mode": session_manager.config['mode']
+            },
+            "kanban": {
+                "SCANNING": trade_engine.watch_list,
+                "ACTIVE": active_trades,
+                "SIGNAL": [] # Populated dynamically during scan
+            }
+        }
+
         await websocket.send_json({
-            "dashboard": live_state.state,
+            "dashboard": state,
             "config": session_manager.config
         })
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(1.0)
 
 if __name__ == "__main__":
     import uvicorn
