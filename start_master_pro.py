@@ -1,116 +1,86 @@
 import sys
 import os
-import json
 import time
 import threading
 import subprocess
 import logging
 from python_app.broker.session_manager import SessionManager
 from python_app.main import TradingApp
-from python_app.core.state import global_state
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - [LAUNCHER] - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - [MASTER-PRO] - %(levelname)s - %(message)s')
 
-def get_input(prompt, default):
-    val = input(f"{prompt} [{default}]: ")
-    return val if val else default
-
-def setup_config():
+def setup_wizard():
     sm = SessionManager()
     print("\n" + "╔" + "="*48 + "╗")
-    print("║  NSEFO MASTER PRO - INITIAL CONFIGURATION       ║")
+    print("║  NSEFO MASTER PRO - CONFIGURATION WIZARD        ║")
     print("╚" + "="*48 + "╝")
 
     current = sm.config
-    new_cfg = {}
-    new_cfg['mode'] = get_input("Trading Mode (live/paper)", current.get('mode', 'paper'))
-    new_cfg['client_id'] = get_input("Dhan Client ID", current.get('client_id', ''))
-    new_cfg['access_token'] = get_input("API Access Token", current.get('access_token', ''))
+    cfg = {}
+    cfg['mode'] = input(f"Trading Mode (live/paper) [{current.get('mode', 'paper')}]: ") or current.get('mode', 'paper')
+    cfg['client_id'] = input(f"Dhan Client ID [{current.get('client_id', '')}]: ") or current.get('client_id', '')
+    cfg['access_token'] = input(f"API Access Token [HIDDEN]: ") or current.get('access_token', '')
 
     risk = current.get('risk', {})
-    new_risk = {}
-    new_risk['capital'] = float(get_input("Operational Capital", risk.get('capital', 1000000)))
-    new_risk['fixed_lots'] = int(get_input("Fixed Lot Count", risk.get('fixed_lots', 1)))
-    new_risk['max_risk_per_trade_percent'] = risk.get('max_risk_per_trade_percent', 1.0)
-    new_risk['daily_max_loss'] = risk.get('daily_max_loss', 5000.0)
+    new_risk = {
+        'capital': float(input(f"Operational Capital [{risk.get('capital', 1000000)}]: ") or risk.get('capital', 1000000)),
+        'fixed_lots': int(input(f"Fixed Lot Count [{risk.get('fixed_lots', 1)}]: ") or risk.get('fixed_lots', 1)),
+        'max_risk_per_trade_percent': risk.get('max_risk_per_trade_percent', 1.0),
+        'daily_max_loss': risk.get('daily_max_loss', 5000.0)
+    }
 
-    new_cfg['risk'] = new_risk
-    new_cfg['totp_secret'] = get_input("TOTP Secret Key (Optional)", current.get('totp_secret', ''))
-    new_cfg['provider'] = get_input("Broker Provider (fenix/dhan)", current.get('provider', 'fenix'))
+    cfg['risk'] = new_risk
+    cfg['totp_secret'] = input(f"TOTP Secret [{current.get('totp_secret', '')}]: ") or current.get('totp_secret', '')
+    cfg['provider'] = 'fenix'
 
-    sm.save_config(new_cfg)
-    print("\n[OK] Operational Parameters Saved.")
-    return sm
+    sm.save_config(cfg)
+    print("\n[OK] Configuration successfully persisted to config.json")
 
-def check_system_integrity():
-    print("\n" + "╔" + "="*48 + "╗")
-    print("║  SYSTEM INTEGRITY & CONNECTIVITY CHECK          ║")
-    print("╚" + "="*48 + "╝")
-    try:
-        app = TradingApp()
-        if app.broker and app.broker.login():
-            print("[OK] Dhan API Gateway: CONNECTED")
-            print("[OK] Rust Calculation Core: SYNCED")
-            print("[OK] Multi-Brain Coordinator: ACTIVE")
-            return True
-        else:
-            print("[ERROR] Authentication Failed. Verify credentials in Config.")
-            return False
-    except Exception as e:
-        print(f"[CRITICAL] Initialization Error: {e}")
-        return False
+    print("\nValidating Connectivity...")
+    app = TradingApp()
+    if app.broker and app.broker.login():
+        print("[OK] Connection to Dhan API Verified.")
+    else:
+        print("[WARNING] Connection failed. Please check credentials.")
 
-def start_web_dashboard():
-    print("[INIT] Deploying Web Terminal (Port 8000)...")
-    # Redirect output to prevent cluttering the main console
-    with open("web_dashboard.log", "w") as log:
-        subprocess.Popen(
-            [sys.executable, "-m", "uvicorn", "dashboards.web.app:app", "--host", "0.0.0.0", "--port", "8000"],
-            stdout=log, stderr=log
-        )
-
-def launch_suite():
+def run_application():
     os.environ['PYTHONPATH'] = os.getcwd()
+    print("\n" + "╔" + "="*48 + "╗")
+    print("║  NSEFO MASTER PRO - SYSTEM ACTIVATION           ║")
+    print("╚" + "="*48 + "╝")
 
-    # 1. Config Check
-    if not os.path.exists("config.json") or input("\nModify system parameters? (y/n) [n]: ").lower() == 'y':
-        setup_config()
-
-    # 2. Connectivity Check
-    if not check_system_integrity():
+    app = TradingApp()
+    if not app.broker or not app.broker.login():
+        print("[CRITICAL] Authentication Failed. Run 'install' to reconfigure.")
         sys.exit(1)
 
-    print("\n" + "╔" + "="*48 + "╗")
-    print("║  ACTIVATING MASTER PRO EXPERT ENVIRONMENT       ║")
-    print("╚" + "="*48 + "╝")
+    # 1. Start Web Dashboard
+    print("[INIT] Launching Web Terminal (Port 8000)...")
+    subprocess.Popen([sys.executable, "-m", "uvicorn", "dashboards.web.app:app", "--host", "0.0.0.0", "--port", "8000"],
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-    # 3. Launch Services
-    start_web_dashboard()
+    # 2. Start Engine
+    print("[INIT] Activating Neural Calculation Core...")
+    threading.Thread(target=app.start, daemon=True).start()
 
-    print("[INIT] Starting Market Scanning Engine...")
-    app_engine = TradingApp()
-    threading.Thread(target=app_engine.start, daemon=True).start()
+    print("\n[SUCCESS] MASTER PRO IS LIVE")
+    print("-> Web Console: http://localhost:8000")
 
-    print("\n" + "*"*50)
-    print("  SYSTEM IS LIVE")
-    print("  - Access Web Console: http://localhost:8000")
-    print("  - Initializing Desktop Terminal...")
-    print("*"*50 + "\n")
-
-    # 4. Launch Desktop UI in Main Thread
+    # 3. Launch Desktop Terminal
     try:
         from PySide6.QtWidgets import QApplication
         from dashboards.desktop.main import DashboardWindow
-
         qt_app = QApplication(sys.argv)
-        # Pass the existing app instance for state sharing
-        win = DashboardWindow(app_engine.session, app_engine)
+        win = DashboardWindow(app.session, app)
         win.show()
         sys.exit(qt_app.exec())
     except Exception as e:
-        logging.error(f"Desktop UI unavailable: {e}")
-        print("[INFO] Application running in Web-Only Mode. Press Ctrl+C to exit.")
+        print(f"[INFO] Desktop UI Mode Unavailable: {e}")
+        print("[INFO] Operating in Headless/Web mode. Press Ctrl+C to terminate.")
         while True: time.sleep(1)
 
 if __name__ == "__main__":
-    launch_suite()
+    if len(sys.argv) > 1 and sys.argv[1] == "--setup":
+        setup_wizard()
+    else:
+        run_application()
