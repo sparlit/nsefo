@@ -1,5 +1,4 @@
 import logging
-import traceback
 from dhanhq import dhanhq, DhanContext
 from .base import Broker
 from typing import List, Dict, Any, Optional, Callable
@@ -8,27 +7,22 @@ class DhanProvider(Broker):
     def __init__(self, client_id: str, access_token: str):
         self.client_id = client_id
         self.access_token = access_token
+        context = DhanContext(client_id, access_token)
+        self.dhan = dhanhq(context)
         self.logger = logging.getLogger("DhanProvider")
-        try:
-            context = DhanContext(client_id, access_token)
-            self.dhan = dhanhq(context)
-        except Exception as e:
-            self.logger.error(f"Critical SDK Initialization Error: {e}")
-            self.dhan = None
 
     def login(self, **kwargs) -> bool:
-        if not self.dhan: return False
         try:
             profile = self.dhan.get_fund_limits()
-            if profile.get('status') == 'success':
-                self.logger.info(f"Dhan Account {self.client_id} Connected.")
-                return True
+            return profile.get('status') == 'success'
         except Exception as e:
-            self.logger.error(f"Dhan Auth Failed: {e}")
-        return False
+            self.logger.error(f"Dhan Login Error: {e}")
+            return False
 
     def get_market_data(self, symbols: List[Dict[str, str]]) -> Dict[str, Any]:
         try:
+            # Dhan quote_data usually expects a list of dictionaries with 'amc' and 'sid' or similar
+            # Re-mapping to ensure compatibility
             return self.dhan.quote_data(symbols)
         except Exception as e:
             self.logger.error(f"Market Data Error: {e}")
@@ -39,7 +33,9 @@ class DhanProvider(Broker):
             return self.dhan.intraday_minute_data(
                 security_id=symbol['security_id'],
                 exchange_segment=symbol['exchange_segment'],
-                instrument_type='EQUITY'
+                instrument_type='EQUITY',
+                from_date=from_date,
+                to_date=to_date
             )
         except Exception as e:
             self.logger.error(f"Historical Data Error: {e}")
@@ -65,37 +61,27 @@ class DhanProvider(Broker):
                 self.logger.warning(f"Order Rejected: {response.get('remarks')}")
                 return ""
         except Exception as e:
-            self.logger.error(f"Order Execution Exception: {e}")
+            self.logger.error(f"Order failure: {e}")
             return ""
 
     def get_order_status(self, order_id: str) -> Dict[str, Any]:
-        try: return self.dhan.get_order_by_id(order_id)
-        except: return {}
+        return self.dhan.get_order_by_id(order_id)
 
     def get_positions(self) -> List[Dict[str, Any]]:
-        try:
-            resp = self.dhan.get_positions()
-            return resp.get('data', []) if resp.get('status') == 'success' else []
-        except: return []
+        resp = self.dhan.get_positions()
+        return resp.get('data', []) if resp.get('status') == 'success' else []
 
     def get_holdings(self) -> List[Dict[str, Any]]:
-        try:
-            resp = self.dhan.get_holdings()
-            return resp.get('data', []) if resp.get('status') == 'success' else []
-        except: return []
+        resp = self.dhan.get_holdings()
+        return resp.get('data', []) if resp.get('status') == 'success' else []
 
     def cancel_order(self, order_id: str) -> bool:
-        try:
-            resp = self.dhan.cancel_order(order_id)
-            return resp.get('status') == 'success'
-        except: return False
+        resp = self.dhan.cancel_order(order_id)
+        return resp.get('status') == 'success'
 
     def start_data_feed(self, symbols: List[Dict[str, Any]], callback: Callable[[Dict[str, Any]], None]):
         from dhanhq import marketfeed
-        try:
-            instruments = [(s['exchange_segment'], s['security_id']) for s in symbols]
-            feed = marketfeed.DhanFeed(self.client_id, self.access_token, instruments, marketfeed.Ticker, callback)
-            import threading
-            threading.Thread(target=feed.run_forever, daemon=True, name="DhanFeedThread").start()
-        except Exception as e:
-            self.logger.error(f"Feed Start Failure: {e}")
+        instruments = [(s['exchange_segment'], s['security_id']) for s in symbols]
+        feed = marketfeed.DhanFeed(self.client_id, self.access_token, instruments, marketfeed.Ticker, callback)
+        import threading
+        threading.Thread(target=feed.run_forever, daemon=True).start()
