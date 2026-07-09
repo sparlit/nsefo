@@ -1,0 +1,12 @@
+dhanhq
+pydantic
+fastapi
+uvicorn
+python-multipart
+pyotp
+httpx
+websockets
+pyside6
+pandas
+numpy
+spacy
