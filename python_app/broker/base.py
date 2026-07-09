@@ -3,11 +3,15 @@ from typing import List, Dict, Any, Optional, Callable
 
 class Broker(ABC):
     @abstractmethod
-    def login(self, **kwargs):
+    def login(self, **kwargs) -> bool:
         raise NotImplementedError
 
     @abstractmethod
-    def get_market_data(self, symbols: List[str]) -> Dict[str, Any]:
+    def get_market_data(self, symbols: List[Dict[str, str]]) -> Dict[str, Any]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_historical_data(self, symbol: Dict[str, str], interval: str, from_date: str, to_date: str) -> Any:
         raise NotImplementedError
 
     @abstractmethod
@@ -27,13 +31,9 @@ class Broker(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def cancel_order(self, order_id: str):
+    def cancel_order(self, order_id: str) -> bool:
         raise NotImplementedError
 
     @abstractmethod
     def start_data_feed(self, symbols: List[Dict[str, Any]], callback: Callable[[Dict[str, Any]], None]):
-        """
-        Starts a real-time data feed (WebSocket) for the given symbols.
-        The callback will be called for every tick/update.
-        """
         raise NotImplementedError
