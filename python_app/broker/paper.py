@@ -20,8 +20,7 @@ class PaperBroker(Broker):
     def get_market_data(self, symbols: List[Dict[str, str]]) -> Dict[str, Any]:
         if self.data_provider:
             return self.data_provider.get_market_data(symbols)
-        # Fallback to real-time context if provider disconnected
-        return {"data": [{"last_price": 100.0}]}
+        return {"status": "error", "message": "Real-time context unavailable"}
 
     def get_historical_data(self, symbol: Dict[str, str], interval: str, from_date: str, to_date: str) -> Any:
         if self.data_provider:
@@ -63,7 +62,5 @@ class PaperBroker(Broker):
 
     def start_data_feed(self, symbols: List[Dict[str, Any]], callback: Callable[[Dict[str, Any]], None]):
         if self.data_provider:
-            self.logger.info("Relaying Live Data Stream to Paper Engine...")
+            self.logger.info("Relaying real-time context to Paper Engine...")
             self.data_provider.start_data_feed(symbols, callback)
-        else:
-            self.logger.warning("Paper Engine running without Live Data Source.")
