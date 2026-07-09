@@ -1,8 +1,8 @@
 import pyotp
 import logging
-from dhanhq import dhanhq
+from dhanhq import dhanhq, marketfeed
 from .base import Broker
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Callable
 
 class DhanProvider(Broker):
     def __init__(self, client_id: str, access_token: str):
@@ -12,10 +12,6 @@ class DhanProvider(Broker):
         self.logger = logging.getLogger("DhanProvider")
 
     def login(self, totp_secret: str = None):
-        """
-        Dhan access tokens are typically valid for a long period.
-        If a session needs to be refreshed via TOTP, it would be handled here.
-        """
         try:
             profile = self.dhan.get_fund_limits()
             if profile.get('status') == 'success':
@@ -26,22 +22,12 @@ class DhanProvider(Broker):
         return False
 
     def get_market_data(self, symbols: List[str]) -> Dict[str, Any]:
-        """
-        Returns snapshot data for provided symbols.
-        Dhan get_quote takes security_id and exchange_segment.
-        For simplicity in this expert app, we assume symbols are passed as dicts
-        or we handle the mapping internally.
-        """
-        # Example: symbols = [{'security_id': '1333', 'exchange_segment': 'NSE_EQ'}]
         return self.dhan.get_quote(symbols)
 
     def place_order(self, o: Dict[str, Any]) -> str:
-        """
-        o contains: symbol, qty, side, type, price, etc.
-        """
         response = self.dhan.place_order(
             tag=o.get('tag', 'NSEFO_APP'),
-            transaction_type=o.get('side', 'BUY'), # BUY or SELL
+            transaction_type=o.get('side', 'BUY'),
             exchange_segment=o.get('exchange_segment', 'NSE_FNO'),
             product_type=o.get('product_type', 'MARGIN'),
             order_type=o.get('order_type', 'MARKET'),
@@ -49,15 +35,12 @@ class DhanProvider(Broker):
             security_id=str(o.get('security_id')),
             quantity=int(o.get('quantity')),
             price=float(o.get('price', 0)),
-            trigger_price=float(o.get('trigger_price', 0)),
-            drv_expiry_date=o.get('expiry_date'),
-            drv_options_type=o.get('option_type'),
-            drv_strike_price=o.get('strike_price')
+            trigger_price=float(o.get('trigger_price', 0))
         )
         if response.get('status') == 'success':
             return response['data']['orderId']
         else:
-            raise Exception(f"Order placement failed: {response.get('remarks')}")
+            raise Exception(f"Order failed: {response.get('remarks')}")
 
     def get_order_status(self, order_id: str) -> Dict[str, Any]:
         return self.dhan.get_order_by_id(order_id)
@@ -72,3 +55,21 @@ class DhanProvider(Broker):
 
     def cancel_order(self, order_id: str):
         return self.dhan.cancel_order(order_id)
+
+    def start_data_feed(self, symbols: List[Dict[str, Any]], callback: Callable[[Dict[str, Any]], None]):
+        """
+        Uses Dhan Marketfeed for real-time WebSocket data.
+        """
+        instruments = [(s['exchange_segment'], s['security_id']) for s in symbols]
+
+        feed = marketfeed.DhanFeed(
+            self.client_id,
+            self.access_token,
+            instruments,
+            marketfeed.Ticker, # or marketfeed.Quote
+            callback
+        )
+        # Running in a separate thread would be managed by the application
+        import threading
+        thread = threading.Thread(target=feed.run_forever, daemon=True)
+        thread.start()

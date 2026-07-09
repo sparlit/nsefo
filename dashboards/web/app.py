@@ -4,62 +4,54 @@ from typing import List, Dict, Any
 import json
 import asyncio
 import os
-
-# Import session manager to allow real-time updates
 from python_app.broker.session_manager import SessionManager
 
 app = FastAPI()
 session_manager = SessionManager()
 
-# In-memory state for UI components
+# Enhanced dashboard state with Kanban columns
 dashboard_state = {
-    "capital": 100000,
-    "pnl": 0,
-    "running_trades": [],
-    "closed_trades": [],
-    "kanban": {
-        "scanning": ["NIFTY", "BANKNIFTY", "FINNIFTY"],
-        "signals": [],
-        "awaiting_confirmation": [],
-        "active": [],
-        "closed": []
+    "summary": {
+        "capital": 1000000,
+        "total_pnl": 0.0,
+        "active_trades_count": 0,
+        "daily_drawdown": 0.0
     },
-    "progress": 0
+    "kanban": {
+        "SCANNING": [
+            {"id": "s1", "symbol": "NIFTY", "brain_status": "Analyzing", "progress": 85},
+            {"id": "s2", "symbol": "BANKNIFTY", "brain_status": "Trend Search", "progress": 40}
+        ],
+        "SIGNAL": [
+            {"id": "sig1", "symbol": "FINNIFTY", "side": "BUY", "prob": 0.88, "type": "Supertrend Break"}
+        ],
+        "CONFIRMATION": [],
+        "ACTIVE": [],
+        "CLOSED": []
+    },
+    "pnl_history": [0, 100, -50, 200, 450, 400, 600] # For charts
 }
-
-@app.get("/")
-def read_root():
-    return {"message": "NSEFO Trading Dashboard API"}
 
 @app.get("/state")
 def get_state():
     return dashboard_state
 
-@app.get("/config")
-def get_config():
-    return session_manager.load_config()
-
-@app.post("/config")
-async def update_config(request: Request):
-    new_config = await request.json()
-    session_manager.save_config(new_config)
-    return {"status": "success", "message": "Configuration updated"}
+@app.post("/confirm_trade/{signal_id}")
+def confirm_trade(signal_id: str):
+    # Logic to move from SIGNAL -> CONFIRMATION -> ACTIVE
+    return {"status": "ok"}
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     while True:
-        # Merging dashboard stats with live config for the frontend
-        data = {
+        # Stream the full expert state
+        await websocket.send_json({
             "dashboard": dashboard_state,
             "config": session_manager.config
-        }
-        await websocket.send_json(data)
-        await asyncio.sleep(1)
+        })
+        await asyncio.sleep(0.5) # Fast updates for expert view
 
 if __name__ == "__main__":
     import uvicorn
-    import sys
-    # Add project root to sys.path
-    sys.path.append(os.getcwd())
     uvicorn.run(app, host="0.0.0.0", port=8000)

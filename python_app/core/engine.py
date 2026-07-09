@@ -9,9 +9,9 @@ class BrainEngine:
 
     def analyze_symbol(self, df: pd.DataFrame) -> Dict[str, Any]:
         """
-        Analyzes a single symbol using real Rust-powered indicators.
+        Coordinates between specialized brains: Trend, Volatility, and Mean Reversion.
         """
-        if df.empty or len(df) < 14:
+        if df.empty or len(df) < 20:
             return {"probability": 0.5, "signal": "NEUTRAL"}
 
         try:
@@ -19,33 +19,41 @@ class BrainEngine:
             high = df['high'].astype(float).tolist()
             low = df['low'].astype(float).tolist()
 
-            # Calculate RSI
+            # Brain 1: Mean Reversion (RSI)
             rsi = nsefo_core.get_rsi_list(close, 14)
-
-            # Calculate Supertrend
-            # Using standard 10, 3 parameters
-            st_values, trends = nsefo_core.get_supertrend(high, low, close, 10, 3.0)
-
-            # Current status from the most recent completed bar
-            curr_trend = trends[-1]
             curr_rsi = rsi[-1]
 
-            # Indicators for probability assessment
-            trend_score = float(curr_trend)
+            # Brain 2: Trend (Supertrend)
+            st_values, trends = nsefo_core.get_supertrend(high, low, close, 10, 3.0)
+            curr_trend = trends[-1]
 
+            # Brain 3: Volatility (Standard Deviation)
+            vol = nsefo_core.get_volatility_list(close, 20)
+            curr_vol = vol[-1]
+            avg_vol = sum(vol[-10:]) / 10
+
+            # Multi-Brain Synthesis for Probability
+            trend_score = float(curr_trend)
             rsi_score = 0.0
             if curr_rsi < 30: rsi_score = 1.0
             elif curr_rsi > 70: rsi_score = -1.0
 
-            probability = nsefo_core.calculate_probability([trend_score, rsi_score])
+            # Volatility Score: High volatility increases conviction for trend followers
+            vol_multiplier = 1.2 if curr_vol > avg_vol else 0.8
+
+            # Synthesize
+            base_prob = nsefo_core.calculate_probability([trend_score, rsi_score])
+            final_prob = (base_prob * vol_multiplier).clamp(0.0, 1.0) if hasattr(base_prob, "clamp") else min(1.0, base_prob * vol_multiplier)
 
             return {
-                "probability": probability,
-                "signal": "BUY" if (probability > 0.75 and curr_trend == 1) else "SELL" if (probability < 0.25 and curr_trend == -1) else "NEUTRAL",
-                "rsi": round(curr_rsi, 2),
-                "trend": "UP" if curr_trend == 1 else "DOWN",
-                "st_value": round(st_values[-1], 2)
+                "probability": round(final_prob, 2),
+                "signal": "BUY" if (final_prob > 0.8) else "SELL" if (final_prob < 0.2) else "NEUTRAL",
+                "brains": {
+                    "trend": "UP" if curr_trend == 1 else "DOWN",
+                    "rsi": round(curr_rsi, 1),
+                    "volatility": "HIGH" if curr_vol > avg_vol else "NORMAL"
+                }
             }
         except Exception as e:
-            self.logger.error(f"Analysis failed: {e}")
+            self.logger.error(f"Multi-brain analysis failed: {e}")
             return {"probability": 0.5, "signal": "ERROR"}

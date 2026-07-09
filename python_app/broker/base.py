@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Callable
 
 class Broker(ABC):
     @abstractmethod
@@ -28,4 +28,12 @@ class Broker(ABC):
 
     @abstractmethod
     def cancel_order(self, order_id: str):
+        pass
+
+    @abstractmethod
+    def start_data_feed(self, symbols: List[Dict[str, Any]], callback: Callable[[Dict[str, Any]], None]):
+        """
+        Starts a real-time data feed (WebSocket) for the given symbols.
+        The callback will be called for every tick/update.
+        """
         pass

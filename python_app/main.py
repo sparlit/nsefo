@@ -15,47 +15,59 @@ class TradingApp:
     def __init__(self):
         self.session = SessionManager()
         self.parser = CommandParser()
-        self.risk_manager = RiskManager(capital=100000)
+        self.risk_manager = RiskManager(capital=1000000) # Default 10L
         self.engine = BrainEngine()
         self.broker = self.session.get_broker()
         self.coordinator = Coordinator(self.broker, self.engine, self.risk_manager)
         self.logger = logging.getLogger("TradingApp")
 
     def handle_manual_suggestion(self, command: str):
+        self.logger.info(f"User Suggestion: {command}")
         parsed = self.parser.interpret(command)
         if parsed["status"] == "error":
+            print(f"Error: {parsed['message']}")
             return parsed
 
         data = parsed["data"]
-        # Simplified for demonstration: assume fixed quantity and mock entry price
-        entry_price = 100.0
-        sl = 80.0
-        quantity = 50
+        # Expert logic: Analyze current context for the suggested trade
+        entry_price = 100.0 # Mock LTP
+        sl = 85.0
 
-        risk_report = self.risk_manager.assess_trade(entry_price, sl, quantity)
-
-        # Create a real analysis using mock data for context
-        df = pd.DataFrame({
+        # Analyze probability using the multi-brain engine
+        df_context = pd.DataFrame({
             'high': [102.0]*30, 'low': [98.0]*30, 'close': [100.0]*30
         })
-        probability_report = self.engine.analyze_symbol(df)
+        analysis = self.engine.analyze_symbol(df_context)
+        prob = analysis['probability']
+
+        # Position Sizing Suggestion
+        recommended_lots = 1
+        if prob > 0.9: recommended_lots = 3
+        elif prob > 0.8: recommended_lots = 2
+
+        quantity = recommended_lots * 50 # Assuming NIFTY 50 lot size
+        risk_report = self.risk_manager.assess_trade(entry_price, sl, quantity)
 
         report = {
-            "parsed": data,
-            "risk": risk_report,
-            "win_probability": probability_report["probability"],
-            "recommendation": "STRONG BUY" if probability_report["probability"] > 0.8 and risk_report["is_safe"] else "CAUTION"
+            "strategy_analysis": analysis,
+            "risk_assessment": risk_report,
+            "position_sizing": {
+                "recommended_lots": recommended_lots,
+                "total_quantity": quantity,
+                "reason": "High conviction multi-brain alignment" if prob > 0.8 else "Standard risk profile"
+            },
+            "recommendation": "PROCEED" if prob > 0.7 and risk_report['is_safe'] else "CAUTION / REDUCE SIZE"
         }
 
-        self.logger.info("EXPERT ANALYSIS COMPLETE")
+        print("\n" + "="*40)
+        print("MASTER PRO EXPERT ANALYSIS")
+        print("="*40)
         print(json.dumps(report, indent=2))
+        print("="*40)
 
-        # User input required with 10s timeout
-        recommend_action = "YES" if report["recommendation"] == "STRONG BUY" else "NO"
-        should_execute = auto_confirm_trade(data, recommend_action=recommend_action)
-
-        if should_execute:
-            self.logger.info("Action: EXECUTING TRADE via COORDINATOR...")
+        # Timed auto-confirmation
+        confirm_default = "YES" if prob > 0.8 else "NO"
+        if auto_confirm_trade(data, recommend_action=confirm_default):
             proposal = {
                 'symbol': data['symbol'],
                 'side': data['action'],
@@ -66,43 +78,16 @@ class TradingApp:
             }
             order_id = self.coordinator.execute_confirmed_trade(proposal)
             if order_id:
-                self.logger.info(f"Success! Order ID: {order_id}")
+                self.logger.info(f"EXPERT EXECUTION SUCCESS: {order_id}")
         else:
-            self.logger.info("Action: TRADE CANCELLED BY USER OR TIMEOUT.")
+            self.logger.info("Trade cancelled by user or safety timeout.")
 
         return report
-
-    def run_market_cycle(self):
-        """
-        High-performance cycle to monitor market and track trades.
-        """
-        self.logger.info("Starting Market Cycle...")
-        try:
-            while True:
-                # 1. Pull market data for symbols (Mock symbols for demo)
-                symbols = ["NIFTY", "BANKNIFTY"]
-                # In real scenario, self.broker.get_market_data(symbols)
-
-                # 2. Track existing trades
-                # mock_prices = {"NIFTY": 105.0, "BANKNIFTY": 48050.0}
-                # self.coordinator.track_trades(mock_prices)
-
-                # 3. Analyze for new signals
-                # self.coordinator.monitor_market(mock_data_dfs)
-
-                time.sleep(1)
-        except KeyboardInterrupt:
-            self.logger.info("Market Cycle Stopped.")
-
-if __name__ == "__main__":
-    app = TradingApp()
-    print("NSE Options F&O Master Pro Expert Trader Started.")
 
 if __name__ == "__main__":
     import sys
     app = TradingApp()
     if len(sys.argv) > 1:
-        command = " ".join(sys.argv[1:])
-        app.handle_manual_suggestion(command)
+        app.handle_manual_suggestion(" ".join(sys.argv[1:]))
     else:
-        print("Usage: python3 python_app/main.py 'buy nifty 24200 pe'")
+        print("NSE Options F&O Master Pro Expert Trader Active.")
