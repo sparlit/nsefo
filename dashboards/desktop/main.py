@@ -1,10 +1,11 @@
 import sys
+import logging
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QWidget,
-    QLabel, QTableWidget, QLineEdit, QPushButton, QComboBox, QTabWidget,
-    QFormLayout, QProgressBar, QFrame
+    QLabel, QLineEdit, QPushButton, QComboBox, QTabWidget,
+    QFormLayout, QFrame, QScrollArea
 )
-from PySide6.QtCore import QTimer, Qt
+from PySide6.QtCore import Qt, QTimer
 from python_app.broker.session_manager import SessionManager
 
 class KanbanColumn(QFrame):
@@ -12,84 +13,109 @@ class KanbanColumn(QFrame):
         super().__init__()
         self.setFrameStyle(QFrame.StyledPanel | QFrame.Plain)
         self.layout = QVBoxLayout(self)
-        self.layout.addWidget(QLabel(f"<b>{title}</b>"))
-        self.list_layout = QVBoxLayout()
-        self.layout.addLayout(self.list_layout)
+        self.header = QLabel(f"<b>{title}</b>")
+        self.header.setAlignment(Qt.AlignCenter)
+        self.layout.addWidget(self.header)
+        self.scroll = QScrollArea()
+        self.scroll.setWidgetResizable(True)
+        self.container = QWidget()
+        self.list_layout = QVBoxLayout(self.container)
+        self.list_layout.addStretch()
+        self.scroll.setWidget(self.container)
+        self.layout.addWidget(self.scroll)
+
+    def add_trade(self, trade_info: str):
+        label = QLabel(trade_info)
+        label.setStyleSheet("background: #e1f5fe; border-radius: 4px; padding: 10px; margin-bottom: 5px; color: #01579b;")
+        self.list_layout.insertWidget(0, label)
+
+class ConfigTab(QWidget):
+    def __init__(self, sm: SessionManager):
+        super().__init__()
+        self.sm = sm
+        self.layout = QVBoxLayout(self)
+        self.form = QFormLayout()
+
+        self.mode = QComboBox()
+        self.mode.addItems(["paper", "live"])
+        self.mode.setCurrentText(sm.config.get("mode", "paper"))
+
+        self.cid = QLineEdit(sm.config.get("client_id", ""))
+        self.token = QLineEdit(sm.config.get("access_token", ""))
+        self.token.setEchoMode(QLineEdit.Password)
+
+        self.capital = QLineEdit(str(sm.config['risk'].get('capital', 1000000)))
+        self.fixed_lots = QLineEdit(str(sm.config['risk'].get('fixed_lots', 1)))
+
+        self.save_btn = QPushButton("SAVE & SYNC SYSTEM")
+        self.save_btn.setStyleSheet("background-color: #2e7d32; color: white; font-weight: bold; padding: 12px; border-radius: 5px;")
+        self.save_btn.clicked.connect(self.save)
+
+        self.form.addRow("Trading Mode:", self.mode)
+        self.form.addRow("Dhan Client ID:", self.cid)
+        self.form.addRow("API Access Token:", self.token)
+        self.form.addRow("Operational Capital:", self.capital)
+        self.form.addRow("<b>Fixed Lot Count:</b>", self.fixed_lots)
+
+        self.layout.addLayout(self.form)
+        self.layout.addWidget(self.save_btn)
         self.layout.addStretch()
 
-    def add_item(self, text):
-        label = QLabel(text)
-        label.setStyleSheet("background: #f0f0f0; border: 1px solid #ccc; padding: 5px;")
-        self.list_layout.addWidget(label)
+    def save(self):
+        new_cfg = self.sm.config
+        new_cfg.update({
+            "mode": self.mode.currentText(),
+            "client_id": self.cid.text(),
+            "access_token": self.token.text()
+        })
+        new_cfg['risk']['capital'] = float(self.capital.text() if self.capital.text() else 1000000)
+        new_cfg['risk']['fixed_lots'] = int(self.fixed_lots.text() if self.fixed_lots.text() else 1)
+        self.sm.save_config(new_cfg)
+        logging.info("Desktop UI: Configuration persisted successfully.")
 
 class DashboardWindow(QMainWindow):
-    def __init__(self, session_manager):
+    def __init__(self, sm: SessionManager, coordinator=None):
         super().__init__()
-        self.session_manager = session_manager
-        self.setWindowTitle("NSEFO Master Pro Expert - Trading Terminal")
-        self.resize(1200, 800)
+        self.sm = sm
+        self.coordinator = coordinator
+        self.setWindowTitle("NSEFO MASTER PRO - TRADING TERMINAL [STABLE]")
+        self.resize(1200, 850)
 
         self.tabs = QTabWidget()
         self.setCentralWidget(self.tabs)
 
-        # Expert Terminal Tab (Kanban)
-        self.terminal_tab = QWidget()
-        self.terminal_layout = QVBoxLayout(self.terminal_tab)
+        self.terminal = QWidget()
+        self.terminal_layout = QVBoxLayout(self.terminal)
 
-        self.summary_bar = QHBoxLayout()
-        self.summary_bar.addWidget(QLabel("Capital: 1,000,000"))
-        self.summary_bar.addWidget(QLabel("PNL: <font color='green'>+5,400</font>"))
-        self.terminal_layout.addLayout(self.summary_bar)
-
-        self.kanban_layout = QHBoxLayout()
+        self.kanban = QHBoxLayout()
         self.cols = {
             "SCANNING": KanbanColumn("SCANNING"),
-            "SIGNALS": KanbanColumn("SIGNALS"),
+            "SIGNAL": KanbanColumn("SIGNALS"),
             "ACTIVE": KanbanColumn("ACTIVE"),
             "CLOSED": KanbanColumn("CLOSED")
         }
-        for col in self.cols.values():
-            self.kanban_layout.addWidget(col)
+        for c in self.cols.values(): self.kanban.addWidget(c)
 
-        self.terminal_layout.addLayout(self.kanban_layout)
+        self.terminal_layout.addLayout(self.kanban)
+        self.tabs.addTab(self.terminal, "EXPERT TERMINAL")
+        self.tabs.addTab(ConfigTab(self.sm), "SYSTEM SETTINGS")
 
-        # Config Tab
-        from dashboards.desktop.main import ConfigTab # local import
-        self.config_tab = ConfigTab(self.session_manager)
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.sync_live_data)
+        self.timer.start(2000)
 
-        self.tabs.addTab(self.terminal_tab, "Expert Terminal")
-        self.tabs.addTab(self.config_tab, "Settings")
-
-        # Initial Demo Items
-        self.cols["SCANNING"].add_item("NIFTY [Brain: 85%]")
-        self.cols["SIGNALS"].add_item("BANKNIFTY BUY @ 48000")
-
-class ConfigTab(QWidget):
-    def __init__(self, session_manager):
-        super().__init__()
-        self.session_manager = session_manager
-        self.layout = QVBoxLayout(self)
-        self.form = QFormLayout()
-        self.mode_combo = QComboBox()
-        self.mode_combo.addItems(["paper", "live"])
-        self.client_id = QLineEdit(session_manager.config.get("client_id", ""))
-        self.save_btn = QPushButton("Save Configuration")
-        self.save_btn.clicked.connect(self.save_cfg)
-
-        self.form.addRow("Mode:", self.mode_combo)
-        self.form.addRow("Client ID:", self.client_id)
-        self.layout.addLayout(self.form)
-        self.layout.addWidget(self.save_btn)
-
-    def save_cfg(self):
-        new_cfg = self.session_manager.config
-        new_cfg['mode'] = self.mode_combo.currentText()
-        new_cfg['client_id'] = self.client_id.text()
-        self.session_manager.save_config(new_cfg)
+    def sync_live_data(self):
+        """Synchronizes Terminal UI with the live coordinator state."""
+        if self.coordinator:
+             # Real-time synchronization logic
+             for order_id, trade in self.coordinator.active_trades.items():
+                 self.cols["ACTIVE"].add_trade(f"{trade['symbol']} | {trade['side']} | Qty: {trade['quantity']}")
+        else:
+             logging.debug("Dashboard awaiting coordinator link...")
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     sm = SessionManager()
     win = DashboardWindow(sm)
     win.show()
-    # sys.exit(app.exec()) # In sandbox we don't exec
+    # Lifecycle managed by entry point

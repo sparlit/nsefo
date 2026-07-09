@@ -9,4 +9,4 @@ websockets
 pyside6
 pandas
 numpy
-spacy # placeholder for NLP or just use regex/simple parsing for start
+spacy

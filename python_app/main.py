@@ -41,27 +41,38 @@ class TradingApp:
         sid = self.symbol_map.get(data['symbol'], "13")
         symbol_info = {'security_id': sid, 'exchange_segment': 'NSE_EQ'}
 
+        # Real-time Market Data
         market_data = self.broker.get_market_data([symbol_info])
-        last_price = float(market_data.get('data', {}).get('last_price', 100.0))
+        # Dhan response for quote_data is usually {sid: {...}} or similar
+        # Extracting last price safely
+        last_price = 100.0
+        if market_data and 'data' in market_data:
+             # Some versions return in 'data' list or dict
+             if isinstance(market_data['data'], dict):
+                 last_price = float(market_data['data'].get(sid, {}).get('last_price', 100.0))
+             elif isinstance(market_data['data'], list) and len(market_data['data']) > 0:
+                 last_price = float(market_data['data'][0].get('last_price', 100.0))
 
-        # Real-time multi-brain analysis context
+        # Expert Multi-Brain Analysis
         df_context = self._get_context_data(symbol_info, last_price)
         analysis = self.engine.analyze_symbol(df_context)
         prob = analysis['probability']
 
-        recommended_lots = 1 if prob < 0.85 else 2 if prob < 0.95 else 3
-        quantity = recommended_lots * 50
+        # Position Sizing: FIXED LOTS from configuration
+        fixed_lots = int(self.session.config['risk'].get('fixed_lots', 1))
+        quantity = fixed_lots * 50 # NIFTY multiplier
 
         sl_val = last_price * 0.985 if data['action'] == 'BUY' else last_price * 1.015
         risk_report = self.risk_manager.assess_trade(last_price, sl_val, quantity)
 
         report = {
             "symbol": data['symbol'], "last_price": last_price, "probability": prob,
+            "fixed_lots": fixed_lots, "quantity": quantity,
             "brains": analysis.get('brains'), "risk": risk_report,
             "decision": "EXECUTE" if prob > 0.8 and risk_report['is_safe'] else "REJECT"
         }
 
-        print("\n" + "#"*60 + "\nMASTER PRO EXPERT ANALYSIS\n" + "#"*60)
+        print("\n" + "#"*60 + "\nMASTER PRO EXPERT ANALYSIS (FIXED LOT MODE)\n" + "#"*60)
         print(json.dumps(report, indent=2))
 
         if auto_confirm_trade(data, recommend_action="YES" if report['decision'] == "EXECUTE" else "NO"):
@@ -71,59 +82,48 @@ class TradingApp:
                 'quantity': quantity, 'price': last_price, 'sl': sl_val,
                 'tag': 'NSEFO_EXPERT'
             }
-            self.coordinator.execute_confirmed_trade(proposal)
+            order_id = self.coordinator.execute_confirmed_trade(proposal)
+            if order_id:
+                self.logger.info(f"TRADE EXECUTED: {order_id}")
 
         return report
 
     def _get_context_data(self, symbol_info, last_price):
+        # Fetching real historical data for brain context
         now = datetime.now()
         hist_data = self.broker.get_historical_data(
             symbol_info, "1",
             (now - timedelta(minutes=60)).strftime("%Y-%m-%d %H:%M:%S"),
             now.strftime("%Y-%m-%d %H:%M:%S")
         )
-        if hist_data and len(hist_data) > 20:
+        if hist_data and isinstance(hist_data, list) and len(hist_data) > 14:
             return pd.DataFrame(hist_data)
+        # Dynamic anchor if history fails
         return pd.DataFrame({'high': [last_price*1.001]*30, 'low': [last_price*0.999]*30, 'close': [last_price]*30})
 
-    def run_market_cycle(self):
-        """
-        The heartbeat of the expert system.
-        Performs continuous scanning and trade maintenance.
-        """
-        self.running = True
-        self.logger.info("Expert System Heartbeat Started.")
-        while self.running:
-            try:
-                # 1. Update Market Prices for Active Trades
-                current_prices = {}
-                for order_id, trade in self.coordinator.active_trades.items():
-                    sid = self.symbol_map.get(trade['symbol'], "13")
-                    quote = self.broker.get_market_data([{'security_id': sid, 'exchange_segment': 'NSE_EQ'}])
-                    current_prices[trade['symbol']] = float(quote.get('data', {}).get('last_price', 0.0))
-
-                self.coordinator.track_trades(current_prices)
-
-                # 2. Continuous Opportunity Scanning
-                for symbol in self.watch_list:
-                    sid = self.symbol_map.get(symbol)
-                    info = {'security_id': sid, 'exchange_segment': 'NSE_EQ'}
-                    quote = self.broker.get_market_data([info])
-                    lp = float(quote.get('data', {}).get('last_price', 0.0))
-                    df = self._get_context_data(info, lp)
-                    analysis = self.engine.analyze_symbol(df)
-
-                    if analysis['probability'] > 0.92:
-                        self.logger.info(f"CRITICAL OPPORTUNITY: {symbol} Prob: {analysis['probability']}")
-                        # Automated execution for top-tier signals could go here
-
-            except Exception as e:
-                self.logger.error(f"Cycle Error: {e}")
-            time.sleep(2)
-
     def start(self):
-        threading.Thread(target=self.run_market_cycle, daemon=True).start()
-        self.logger.info("NSEFO Master Pro Engine is fully operational.")
+        self.logger.info("NSEFO Master Pro Engine fully operational (Live Market Mode).")
+        # Continuous tracking loop
+        self.running = True
+        def loop():
+            while self.running:
+                try:
+                    # Update active trades trailing SL
+                    current_prices = {}
+                    for oid, t in self.coordinator.active_trades.items():
+                        sid = self.symbol_map.get(t['symbol'], "13")
+                        q = self.broker.get_market_data([{'security_id': sid, 'exchange_segment': 'NSE_EQ'}])
+                        # Handle Dhan response structure
+                        lp = 0.0
+                        if q and 'data' in q:
+                            if isinstance(q['data'], dict): lp = float(q['data'].get(sid, {}).get('last_price', 0.0))
+                            elif isinstance(q['data'], list) and len(q['data']) > 0: lp = float(q['data'][0].get('last_price', 0.0))
+                        current_prices[t['symbol']] = lp
+                    self.coordinator.track_trades(current_prices)
+                except Exception as e:
+                    self.logger.error(f"Heartbeat Error: {e}")
+                time.sleep(2)
+        threading.Thread(target=loop, daemon=True).start()
 
 if __name__ == "__main__":
     app = TradingApp()
