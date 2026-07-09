@@ -10,3 +10,11 @@ pyside6
 pandas
 numpy
 spacy
+opengreeks
+fenix
+pycryptodome
+requests-oauthlib
+selenium
+trio
+trio-websocket
+websocket-client
