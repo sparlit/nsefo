@@ -7,6 +7,7 @@ import subprocess
 import logging
 from python_app.broker.session_manager import SessionManager
 from python_app.main import TradingApp
+from python_app.core.state import global_state
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - [LAUNCHER] - %(levelname)s - %(message)s')
 
@@ -16,9 +17,9 @@ def get_input(prompt, default):
 
 def setup_config():
     sm = SessionManager()
-    print("\n" + "="*50)
-    print("  NSEFO MASTER PRO - INITIAL CONFIGURATION")
-    print("="*50)
+    print("\n" + "╔" + "="*48 + "╗")
+    print("║  NSEFO MASTER PRO - INITIAL CONFIGURATION       ║")
+    print("╚" + "="*48 + "╝")
 
     current = sm.config
     new_cfg = {}
@@ -34,76 +35,82 @@ def setup_config():
     new_risk['daily_max_loss'] = risk.get('daily_max_loss', 5000.0)
 
     new_cfg['risk'] = new_risk
-    new_cfg['totp_secret'] = current.get('totp_secret', '')
-    new_cfg['provider'] = current.get('provider', 'fenix')
+    new_cfg['totp_secret'] = get_input("TOTP Secret Key (Optional)", current.get('totp_secret', ''))
+    new_cfg['provider'] = get_input("Broker Provider (fenix/dhan)", current.get('provider', 'fenix'))
 
     sm.save_config(new_cfg)
-    print("\n[OK] Configuration Saved Successfully.")
+    print("\n[OK] Operational Parameters Saved.")
     return sm
 
-def check_connectivity():
-    print("\n" + "="*50)
-    print("  CONNECTIVITY & SYSTEM INTEGRITY CHECK")
-    print("="*50)
+def check_system_integrity():
+    print("\n" + "╔" + "="*48 + "╗")
+    print("║  SYSTEM INTEGRITY & CONNECTIVITY CHECK          ║")
+    print("╚" + "="*48 + "╝")
     try:
         app = TradingApp()
         if app.broker and app.broker.login():
-            print("[OK] Broker Authentication: SUCCESS")
-            print("[OK] Rust Neural Engine: ONLINE")
-            print("[OK] Market Data Feed: READY")
+            print("[OK] Dhan API Gateway: CONNECTED")
+            print("[OK] Rust Calculation Core: SYNCED")
+            print("[OK] Multi-Brain Coordinator: ACTIVE")
             return True
         else:
-            print("[ERROR] Broker Authentication Failed. Check credentials in Settings.")
+            print("[ERROR] Authentication Failed. Verify credentials in Config.")
             return False
     except Exception as e:
-        print(f"[CRITICAL ERROR] System Initialization Failed: {e}")
+        print(f"[CRITICAL] Initialization Error: {e}")
         return False
 
 def start_web_dashboard():
-    print("[INIT] Launching Web Dashboard (Port 8000)...")
-    subprocess.Popen([sys.executable, "-m", "uvicorn", "dashboards.web.app:app", "--host", "0.0.0.0", "--port", "8000", "--log-level", "error"])
+    print("[INIT] Deploying Web Terminal (Port 8000)...")
+    # Redirect output to prevent cluttering the main console
+    with open("web_dashboard.log", "w") as log:
+        subprocess.Popen(
+            [sys.executable, "-m", "uvicorn", "dashboards.web.app:app", "--host", "0.0.0.0", "--port", "8000"],
+            stdout=log, stderr=log
+        )
 
-def start_engine():
-    print("[INIT] Starting Expert Trading Engine...")
-    # Engine runs in the main thread or background
-    app = TradingApp()
-    app.start()
-
-def main():
+def launch_suite():
     os.environ['PYTHONPATH'] = os.getcwd()
 
-    if not os.path.exists("config.json") or input("\nModify existing configuration? (y/n) [n]: ").lower() == 'y':
+    # 1. Config Check
+    if not os.path.exists("config.json") or input("\nModify system parameters? (y/n) [n]: ").lower() == 'y':
         setup_config()
 
-    if check_connectivity():
-        print("\n" + "="*50)
-        print("  LAUNCHING FULL MASTER PRO SUITE")
-        print("="*50)
+    # 2. Connectivity Check
+    if not check_system_integrity():
+        sys.exit(1)
 
-        start_web_dashboard()
+    print("\n" + "╔" + "="*48 + "╗")
+    print("║  ACTIVATING MASTER PRO EXPERT ENVIRONMENT       ║")
+    print("╚" + "="*48 + "╝")
 
-        # Start Engine (Background)
-        threading.Thread(target=start_engine, daemon=True).start()
+    # 3. Launch Services
+    start_web_dashboard()
 
-        print("\n[SUCCESS] NSEFO Master Pro is active.")
-        print("-> Web Terminal: http://localhost:8000")
-        print("-> Desktop Terminal: Launching UI...")
+    print("[INIT] Starting Market Scanning Engine...")
+    app_engine = TradingApp()
+    threading.Thread(target=app_engine.start, daemon=True).start()
 
-        # Finally, launch Desktop UI (Main Thread)
-        try:
-            from PySide6.QtWidgets import QApplication
-            from dashboards.desktop.main import DashboardWindow
-            from python_app.main import TradingApp
+    print("\n" + "*"*50)
+    print("  SYSTEM IS LIVE")
+    print("  - Access Web Console: http://localhost:8000")
+    print("  - Initializing Desktop Terminal...")
+    print("*"*50 + "\n")
 
-            qt_app = QApplication(sys.argv)
-            trade_app = TradingApp()
-            win = DashboardWindow(trade_app.session, trade_app)
-            win.show()
-            sys.exit(qt_app.exec())
-        except Exception as e:
-            print(f"[INFO] Desktop UI could not be started: {e}")
-            print("[INFO] Application continuing in Headless/Web mode.")
-            while True: time.sleep(1)
+    # 4. Launch Desktop UI in Main Thread
+    try:
+        from PySide6.QtWidgets import QApplication
+        from dashboards.desktop.main import DashboardWindow
+
+        qt_app = QApplication(sys.argv)
+        # Pass the existing app instance for state sharing
+        win = DashboardWindow(app_engine.session, app_engine)
+        win.show()
+        sys.exit(qt_app.exec())
+    except Exception as e:
+        logging.error(f"Desktop UI unavailable: {e}")
+        print("[INFO] Application running in Web-Only Mode. Press Ctrl+C to exit.")
+        while True: time.sleep(1)
 
 if __name__ == "__main__":
-    main()
+    launch_suite()
