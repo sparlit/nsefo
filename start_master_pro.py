@@ -9,6 +9,15 @@ from python_app.main import TradingApp
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - [MASTER-PRO] - %(levelname)s - %(message)s')
 
+
+def _prompt(prompt_text: str, fallback):
+    """Read from stdin non-interactively if no tty is available; return fallback."""
+    try:
+        return input(prompt_text) or fallback
+    except (EOFError, OSError):
+        return fallback
+
+
 def setup_wizard():
     sm = SessionManager()
     print("\n" + "╔" + "="*48 + "╗")
@@ -17,20 +26,20 @@ def setup_wizard():
 
     current = sm.config
     cfg = {}
-    cfg['mode'] = input(f"Trading Mode (live/paper) [{current.get('mode', 'paper')}]: ") or current.get('mode', 'paper')
-    cfg['client_id'] = input(f"Dhan Client ID [{current.get('client_id', '')}]: ") or current.get('client_id', '')
-    cfg['access_token'] = input(f"API Access Token [HIDDEN]: ") or current.get('access_token', '')
+    cfg['mode'] = _prompt(f"Trading Mode (live/paper) [{current.get('mode', 'paper')}]: ", current.get('mode', 'paper'))
+    cfg['client_id'] = _prompt(f"Dhan Client ID [{current.get('client_id', '')}]: ", current.get('client_id', ''))
+    cfg['access_token'] = _prompt(f"API Access Token [HIDDEN]: ", current.get('access_token', ''))
 
     risk = current.get('risk', {})
     new_risk = {
-        'capital': float(input(f"Operational Capital [{risk.get('capital', 1000000)}]: ") or risk.get('capital', 1000000)),
-        'fixed_lots': int(input(f"Fixed Lot Count [{risk.get('fixed_lots', 1)}]: ") or risk.get('fixed_lots', 1)),
+        'capital': float(_prompt(f"Operational Capital [{risk.get('capital', 1000000)}]: ", risk.get('capital', 1000000))),
+        'fixed_lots': int(_prompt(f"Fixed Lot Count [{risk.get('fixed_lots', 1)}]: ", risk.get('fixed_lots', 1))),
         'max_risk_per_trade_percent': risk.get('max_risk_per_trade_percent', 1.0),
         'daily_max_loss': risk.get('daily_max_loss', 5000.0)
     }
 
     cfg['risk'] = new_risk
-    cfg['totp_secret'] = input(f"TOTP Secret [{current.get('totp_secret', '')}]: ") or current.get('totp_secret', '')
+    cfg['totp_secret'] = _prompt(f"TOTP Secret [{current.get('totp_secret', '')}]: ", current.get('totp_secret', ''))
     cfg['provider'] = 'fenix'
 
     sm.save_config(cfg)
