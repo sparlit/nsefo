@@ -51,13 +51,13 @@ class TradingApp:
         market_data = self.broker.get_market_data([symbol_info])
         last_price = self._extract_ltp(market_data, sid)
 
-        if last_price == 0.0:
-            self.logger.error("Could not retrieve live price. Aborting analysis.")
+        if last_price <= 0.0:
+            self.logger.error("Live price unavailable. Aborting analysis.")
             return {"status": "error", "message": "Live price unavailable"}
 
         df_context = self._get_context_data(symbol_info, last_price)
         if df_context.empty:
-            self.logger.error("Insufficient market context for brain analysis.")
+            self.logger.error("Market context unavailable.")
             return {"status": "error", "message": "Market context unavailable"}
 
         analysis = self.engine.analyze_symbol(df_context)
@@ -102,8 +102,8 @@ class TradingApp:
                     return float(d.get(sid, {}).get('last_price', 0.0))
                 elif isinstance(d, list) and len(d) > 0:
                     return float(d[0].get('last_price', 0.0))
-        except:
-            logging.debug("LTP extraction failed")
+        except Exception as e:
+            self.logger.debug(f"LTP extraction failed: {e}")
         return 0.0
 
     def _get_context_data(self, symbol_info, last_price):
@@ -119,8 +119,7 @@ class TradingApp:
                 return pd.DataFrame(hist_data)
         except Exception as e:
             self.logger.error(f"Historical fetch failed: {e}")
-
-        return pd.DataFrame() # Return empty to force error in caller
+        return pd.DataFrame()
 
     def run_market_cycle(self):
         self.running = True
@@ -129,7 +128,9 @@ class TradingApp:
             try:
                 current_prices = {}
                 active_list = []
-                for order_id, trade in self.coordinator.active_trades.items():
+                # Fixed: Creating a copy of keys to avoid modification error
+                for order_id in list(self.coordinator.active_trades.keys()):
+                    trade = self.coordinator.active_trades[order_id]
                     sid = self.symbol_map.get(trade['symbol'], "13")
                     quote = self.broker.get_market_data([{'security_id': sid, 'exchange_segment': 'NSE_EQ'}])
                     lp = self._extract_ltp(quote, sid)
