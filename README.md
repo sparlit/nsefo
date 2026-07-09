@@ -6,7 +6,7 @@ A professional-grade, high-performance automated trading environment for NSE Opt
 
 ## 📑 Detailed System Reports
 The **NSE F&O Master Pro** is a zero-illusion, 100% operational trading system.
-- [Detailed Architectural Report](ARCHITECTURE_REPORT.md) - The multi-brain implementation.
+- [Comprehensive Project Report](PROJECT_REPORT.md) - The multi-brain implementation.
 - [Operational Roadmap](OPERATIONAL_PHASES.md) - The 10 phases of a trade lifecycle.
 - [Knowledge Base & Memory](PROJECT_MEMORY.md) - Architectural decisions and patterns.
 

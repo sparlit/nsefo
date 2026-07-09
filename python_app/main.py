@@ -14,7 +14,7 @@ from python_app.broker.session_manager import SessionManager
 from python_app.core.utils import auto_confirm_trade
 from python_app.core.state import global_state
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - [ENGINE] - %(levelname)s - %(message)s')
 
 class TradingApp:
     def __init__(self):
@@ -32,7 +32,6 @@ class TradingApp:
         self.watch_list = ["NIFTY", "BANKNIFTY", "FINNIFTY"]
         self.symbol_map = {"NIFTY": "13", "BANKNIFTY": "25", "FINNIFTY": "27"}
 
-        # Initialize global state
         global_state.update_summary(
             capital=self.session.config['risk']['capital'],
             mode=self.session.config['mode']
@@ -40,7 +39,7 @@ class TradingApp:
         global_state.set_scanning(self.watch_list)
 
     def handle_manual_suggestion(self, command: str):
-        self.logger.info(f"EXPERT SYSTEM: ANALYSING INSTRUCTION -> {command}")
+        self.logger.info(f"Analyzing Instruction: {command}")
         global_state.add_log(f"Manual Input: {command}")
         parsed = self.parser.interpret(command)
         if parsed["status"] == "error": return parsed
@@ -49,16 +48,21 @@ class TradingApp:
         sid = self.symbol_map.get(data['symbol'], "13")
         symbol_info = {'security_id': sid, 'exchange_segment': 'NSE_EQ'}
 
-        # Pull Live Market Data
         market_data = self.broker.get_market_data([symbol_info])
         last_price = self._extract_ltp(market_data, sid)
 
-        # Expert Multi-Brain Analysis
+        if last_price == 0.0:
+            self.logger.error("Could not retrieve live price. Aborting analysis.")
+            return {"status": "error", "message": "Live price unavailable"}
+
         df_context = self._get_context_data(symbol_info, last_price)
+        if df_context.empty:
+            self.logger.error("Insufficient market context for brain analysis.")
+            return {"status": "error", "message": "Market context unavailable"}
+
         analysis = self.engine.analyze_symbol(df_context)
         prob = analysis['probability']
 
-        # Position Sizing: FIXED LOTS from configuration
         fixed_lots = int(self.session.config['risk'].get('fixed_lots', 1))
         quantity = fixed_lots * 50
 
@@ -84,74 +88,76 @@ class TradingApp:
             }
             order_id = self.coordinator.execute_confirmed_trade(proposal)
             if order_id:
-                global_state.add_log(f"Executed {data['action']} {data['symbol']} @ {last_price}")
+                global_state.add_log(f"Order Success: {order_id}")
 
         return report
 
     def _extract_ltp(self, market_data, sid):
-        if market_data and 'data' in market_data:
-            if isinstance(market_data['data'], dict):
-                return float(market_data['data'].get(sid, {}).get('last_price', 100.0))
-            elif isinstance(market_data['data'], list) and len(market_data['data']) > 0:
-                return float(market_data['data'][0].get('last_price', 100.0))
-        return 100.0
+        """Extracts LTP from real Dhan/Fenix data structures."""
+        try:
+            if market_data and 'data' in market_data:
+                d = market_data['data']
+                if isinstance(d, dict):
+                    # Dhan quote_data format
+                    return float(d.get(sid, {}).get('last_price', 0.0))
+                elif isinstance(d, list) and len(d) > 0:
+                    return float(d[0].get('last_price', 0.0))
+        except:
+            continue
+        return 0.0
 
     def _get_context_data(self, symbol_info, last_price):
+        """Fetches real historical OHLC for brain processing."""
         now = datetime.now()
-        hist_data = self.broker.get_historical_data(
-            symbol_info, "1",
-            (now - timedelta(minutes=60)).strftime("%Y-%m-%d %H:%M:%S"),
-            now.strftime("%Y-%m-%d %H:%M:%S")
-        )
-        if hist_data and isinstance(hist_data, list) and len(hist_data) > 14:
-            return pd.DataFrame(hist_data)
-        return pd.DataFrame({'high': [last_price*1.001]*30, 'low': [last_price*0.999]*30, 'close': [last_price]*30})
+        try:
+            hist_data = self.broker.get_historical_data(
+                symbol_info, "1",
+                (now - timedelta(minutes=60)).strftime("%Y-%m-%d %H:%M:%S"),
+                now.strftime("%Y-%m-%d %H:%M:%S")
+            )
+            if hist_data and isinstance(hist_data, list) and len(hist_data) > 14:
+                return pd.DataFrame(hist_data)
+        except Exception as e:
+            self.logger.error(f"Historical fetch failed: {e}")
+
+        return pd.DataFrame() # Return empty to force error in caller
 
     def run_market_cycle(self):
         self.running = True
-        self.logger.info("Expert System Heartbeat Initiated.")
+        self.logger.info("Neural Scanning Cycle Started.")
         while self.running:
             try:
-                # 1. Update Market Prices for Active Trades & Trailing SL
                 current_prices = {}
                 active_list = []
                 for order_id, trade in self.coordinator.active_trades.items():
                     sid = self.symbol_map.get(trade['symbol'], "13")
                     quote = self.broker.get_market_data([{'security_id': sid, 'exchange_segment': 'NSE_EQ'}])
                     lp = self._extract_ltp(quote, sid)
-                    current_prices[trade['symbol']] = lp
-                    active_list.append({
-                        "symbol": trade['symbol'], "side": trade['side'],
-                        "price": trade['price'], "ltp": lp, "quantity": trade['quantity']
-                    })
+                    if lp > 0:
+                        current_prices[trade['symbol']] = lp
+                        active_list.append({"symbol": trade['symbol'], "side": trade['side'], "price": trade['price'], "ltp": lp, "quantity": trade['quantity']})
 
                 self.coordinator.track_trades(current_prices)
                 global_state.update_active_trades(active_list)
 
-                # 2. Continuous Opportunity Scanning
                 for symbol in self.watch_list:
                     sid = self.symbol_map.get(symbol)
                     info = {'security_id': sid, 'exchange_segment': 'NSE_EQ'}
                     quote = self.broker.get_market_data([info])
                     lp = self._extract_ltp(quote, sid)
-                    df = self._get_context_data(info, lp)
-                    analysis = self.engine.analyze_symbol(df)
-
-                    if analysis['probability'] > 0.90:
-                        self.logger.info(f"HIGH CONVICTION SIGNAL: {symbol} @ {lp}")
-                        global_state.add_signal({
-                            "symbol": symbol, "side": analysis['signal'],
-                            "prob": analysis['probability'], "price": lp,
-                            "brains": analysis['brains']
-                        })
-
+                    if lp > 0:
+                        df = self._get_context_data(info, lp)
+                        if not df.empty:
+                            analysis = self.engine.analyze_symbol(df)
+                            if analysis['probability'] > 0.90:
+                                global_state.add_signal({"symbol": symbol, "side": analysis['signal'], "prob": analysis['probability'], "price": lp, "brains": analysis['brains']})
             except Exception as e:
-                self.logger.error(f"Engine Loop Error: {e}")
+                self.logger.error(f"Cycle Exception: {e}")
             time.sleep(1)
 
     def start(self):
-        threading.Thread(target=self.run_market_cycle, daemon=True).start()
-        self.logger.info("NSEFO Master Pro Engine is fully operational.")
+        self.logger.info("Activating Master Pro Core Loop...")
+        self.run_market_cycle()
 
 if __name__ == "__main__":
     app = TradingApp()
@@ -159,7 +165,3 @@ if __name__ == "__main__":
         app.handle_manual_suggestion(" ".join(sys.argv[1:]))
     else:
         app.start()
-        try:
-            while True: time.sleep(1)
-        except KeyboardInterrupt:
-            app.running = False
