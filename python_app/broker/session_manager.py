@@ -34,6 +34,7 @@ from .nirmal_bang import NirmalBangProvider
 from .axis_direct import AxisDirectProvider
 from .groww import GrowwProvider
 from .paytm_money import PaytmMoneyProvider
+from .mstock import MStockProvider
 
 class SessionManager:
     def __init__(self, config_path: str = "config.json"):
@@ -184,6 +185,12 @@ class SessionManager:
                         "Paytm Money: F&O segment NOT confirmed. "
                         "Use Zerodha, AngelOne, or Dhan for options trading."
                     )
+            elif provider_type == "mstock":
+                live_provider = MStockProvider(
+                    client_id=client_id,
+                    access_token=access_token,
+                    api_key=self.config.get("api_key", ""),
+                )
             else:
                 live_provider = DhanProvider(client_id, access_token)
 

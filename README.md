@@ -471,6 +471,7 @@ Controls order execution cadence and polling intervals. Set via `target_frequenc
 | 28 | ~~**Paytm Money**~~ ⚠️ DEPRECATED | `paytm_money` | client_id + access_token | F&O segment not supported — equity only |
 | 29 | ~~**Kunjee**~~ ⚠️ DEPRECATED | `kunjee` | client_id + access_token | api.kunjee.in unverified — SSRF blocked |
 | 30 | **Master Trust** | `master_trust` | app_key | — |
+| 31 | **mStock (Mirae Asset)** | `mstock` | client_id + api_key + access_token | BASE_URL unverified — confirm from browser DevTools on trade.mstock.com |
 
 > **Note**: WebSocket real-time data feeds are implemented for Dhan and Fenix. Other brokers use polling-based `get_market_data()` calls. WebSocket implementations for remaining brokers are documented but require broker-specific SDK integration.
 

@@ -97,6 +97,7 @@ def get_credentials(existing_cfg):
         ("paytm_money", "Paytm Money"),
         ("kunjee", "Kunjee"),
         ("master_trust", "Master Trust"),
+        ("mstock", "mStock (Mirae Asset)"),
     ]
 
     print("\nSupported Brokers:")

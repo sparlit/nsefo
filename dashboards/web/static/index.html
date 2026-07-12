@@ -72,6 +72,7 @@
                                     <option value="kunjee">Kunjee</option>
                                     <option value="master_trust">Master Trust</option>
                                     <option value="motilal">Motilal Oswal</option>
+                                    <option value="mstock">mStock (Mirae Asset)</option>
                                     <option value="finvasia">Finvasia (Shoonya)</option>
                                     <option value="choice">Choice Broking</option>
                                     <option value="vpc">VPC</option>
@@ -196,6 +197,18 @@
                             </div>
                         </div>
 
+                        <!-- mStock extra -->
+                        <div id="f-mstock" class="broker-field grid grid-cols-2 gap-5">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-500 uppercase mb-2 tracking-wider">Client ID</label>
+                                <input type="text" id="cfg-mstock-client-id" placeholder="mStock client ID" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-500 uppercase mb-2 tracking-wider">API Key</label>
+                                <input type="text" id="cfg-mstock-api-key" placeholder="From mStock developer portal" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm">
+                            </div>
+                        </div>
+
                         <!-- TOTP (shared) -->
                         <div id="f-totp" class="broker-field">
                             <div>
@@ -288,6 +301,7 @@
             finvasia:     ['f-finvasia', 'f-totp'],
             motilal:      ['f-motilal'],
             master_trust: ['f-master_trust'],
+            mstock:        ['f-mstock'],
             choice:       ['f-totp'],
             moneysukh:    ['f-moneysukh'],
             geojit:       ['f-geojit'],
