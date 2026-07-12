@@ -59,48 +59,71 @@ def _prompt(prompt_text, fallback):
         return fallback
 
 
+def _load_providers_from_registry():
+    """Load broker list from the new python_app.brokers.registry if available."""
+    try:
+        import sys
+        # Add project root so 'python_app.brokers.registry' resolves
+        project_root = os.path.dirname(os.path.abspath(__file__))
+        if project_root not in sys.path:
+            sys.path.insert(0, project_root)
+        from python_app.brokers.registry import PROVIDER_INFO
+        providers = []
+        for key, info in sorted(PROVIDER_INFO.items(),
+                                key=lambda x: x[1].get('nse_code', '99999')):
+            if info.get('api_status') in ('verified', 'stub') and not info.get('deprecated'):
+                status_marker = '' if info.get('api_status') == 'verified' else ' [stub]'
+                label = f"{info['name']}{status_marker}"
+                providers.append((key, label))
+        return providers
+    except Exception:
+        return None
+
+
 def get_credentials(existing_cfg):
     """Collect broker API credentials interactively."""
     print("\n" + "=" * 48)
     print("  CONFIGURATION WIZARD")
     print("=" * 48)
 
-    # Provider selection
-    providers = [
-        ("dhan", "Dhan (dhanhq SDK)"),
-        ("fenix", "Dhan (Fenix Gateway)"),
-        ("zerodha", "Zerodha Kite Connect"),
-        ("angelone", "AngelOne SmartAPI"),
-        ("upstox", "Upstox"),
-        ("fyers", "Fyers API v2"),
-        ("kotak", "Kotak Securities"),
-        ("kotak_neo", "Kotak Neo"),
-        ("5paisa", "5paisa"),
-        ("iifl", "IIFL Markets"),
-        ("motilal", "Motilal Oswal"),
-        ("finvasia", "Finvasia (Shoonya)"),
-        ("choice", "Choice Broking"),
-        ("vpc", "VPC"),
-        ("aliceblue", "AliceBlue"),
-        ("moneysukh", "Moneysukh (ONUS Capital)"),
-        ("hdfc", "HDFC Securities"),
-        ("icici", "ICICI Direct"),
-        ("sbi", "SBI Securities"),
-        ("bajaj", "Bajaj Financial"),
-        ("geojit", "Geojit"),
-        ("sharekhan", "Mirae Asset Sharekhan"),
-        ("anand_rathi", "Anand Rathi"),
-        ("edelweiss", "Edelweiss"),
-        ("nirmal_bang", "Nirmal Bang"),
-        ("axis_direct", "Axis Direct"),
-        ("groww", "Groww"),
-        ("paytm_money", "Paytm Money"),
-        ("kunjee", "Kunjee"),
-        ("master_trust", "Master Trust"),
-        ("mstock", "mStock (Mirae Asset)"),
-    ]
-
-    print("\nSupported Brokers:")
+    # Provider selection — try new registry first, fall back to hardcoded list
+    registry_providers = _load_providers_from_registry()
+    if registry_providers:
+        providers = registry_providers
+        print(f"\n[{len(providers)} brokers loaded from NSE registry]")
+    else:
+        providers = [
+            ("dhan", "Dhan (dhanhq SDK)"),
+            ("fenix", "Dhan (Fenix Gateway)"),
+            ("zerodha", "Zerodha Kite Connect"),
+            ("angelone", "AngelOne SmartAPI"),
+            ("upstox", "Upstox"),
+            ("fyers", "Fyers API v2"),
+            ("kotak", "Kotak Securities"),
+            ("kotak_neo", "Kotak Neo"),
+            ("5paisa", "5paisa"),
+            ("iifl", "IIFL Markets"),
+            ("motilal", "Motilal Oswal"),
+            ("finvasia", "Finvasia (Shoonya)"),
+            ("choice", "Choice Broking"),
+            ("aliceblue", "AliceBlue"),
+            ("moneysukh", "Moneysukh (ONUS Capital)"),
+            ("hdfc", "HDFC Securities"),
+            ("icici", "ICICI Direct"),
+            ("sbi", "SBI Securities"),
+            ("bajaj", "Bajaj Financial"),
+            ("geojit", "Geojit"),
+            ("sharekhan", "Mirae Asset Sharekhan"),
+            ("anand_rathi", "Anand Rathi"),
+            ("edelweiss", "Edelweiss"),
+            ("nirmal_bang", "Nirmal Bang"),
+            ("axis_direct", "Axis Direct"),
+            ("groww", "Groww"),
+            ("paytm_money", "Paytm Money"),
+            ("master_trust", "Master Trust"),
+            ("mstock", "mStock (Mirae Asset)"),
+        ]
+        print("\nSupported Brokers:")
     for i, (key, label) in enumerate(providers, 1):
         print(f"  {i:2d}. {label}")
     print()
