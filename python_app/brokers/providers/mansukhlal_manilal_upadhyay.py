@@ -1,0 +1,79 @@
+"""mansukhlal_manilal_upadhyay broker stub — auto-generated."""
+import logging
+from typing import List, Dict, Any
+from ..base import Broker
+
+try:
+    import httpx
+    _HAS_HTTPX = True
+except ImportError:
+    _HAS_HTTPX = False
+
+
+class MansukhlalManilalUpadhyayProvider(Broker):
+    """MANSUKHLAL MANILAL UPADHYAY — STUB implementation (no verified API endpoints)."""
+
+    _provider_key = "mansukhlal_manilal_upadhyay"
+
+    def __init__(self, **kwargs):
+        self.logger = logging.getLogger("MansukhlalManilalUpadhyayProvider")
+        self.base_url = kwargs.get("base_url", "")
+        # Accept any credentials passed in via kwargs
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+    def _get_client(self):
+        if not _HAS_HTTPX:
+            raise ImportError("httpx is required: pip install httpx")
+        import certifi
+        return httpx.Client(verify=certifi.where(), timeout=15.0)
+
+    def login(self, **kwargs) -> bool:
+        self.logger.warning(
+            "MANSUKHLAL MANILAL UPADHYAY — login() is a stub. "
+            "No verified API endpoints available. "
+            "Please verify the correct API URL from your browser DevTools Network tab."
+        )
+        return False
+
+    def get_market_data(self, symbols: List[Dict[str, str]]) -> Dict[str, Any]:
+        self.logger.warning("MANSUKHLAL MANILAL UPADHYAY — get_market_data() not implemented (stub)", )
+        return {}
+
+    def get_historical_data(self, symbol: Dict[str, str], interval: str,
+                           from_date: str, to_date: str) -> Any:
+        self.logger.warning("MANSUKHLAL MANILAL UPADHYAY — get_historical_data() not implemented (stub)", )
+        return []
+
+    def place_order(self, order: Dict[str, Any]) -> str:
+        self.logger.warning("MANSUKHLAL MANILAL UPADHYAY — place_order() not implemented (stub)", )
+        return ""
+
+    def get_orderbook(self) -> List[Dict[str, Any]]:
+        self.logger.warning("MANSUKHLAL MANILAL UPADHYAY — get_orderbook() not implemented (stub)", )
+        return []
+
+    def get_positions(self) -> List[Dict[str, Any]]:
+        self.logger.warning("MANSUKHLAL MANILAL UPADHYAY — get_positions() not implemented (stub)", )
+        return []
+
+    def get_holdings(self) -> List[Dict[str, Any]]:
+        self.logger.warning("MANSUKHLAL MANILAL UPADHYAY — get_holdings() not implemented (stub)", )
+        return []
+
+    def logout(self) -> bool:
+        self.logger.warning("MANSUKHLAL MANILAL UPADHYAY — logout() not implemented (stub)", )
+        return False
+
+    def get_profile(self) -> Dict[str, Any]:
+        self.logger.warning("MANSUKHLAL MANILAL UPADHYAY — get_profile() not implemented (stub)", )
+        return {}
+
+    def cancel_order(self, order_id: str) -> bool:
+        self.logger.warning("MANSUKHLAL MANILAL UPADHYAY — cancel_order() not implemented (stub)", )
+        return False
+
+    def modify_order(self, order_id: str, **kwargs) -> bool:
+        self.logger.warning("MANSUKHLAL MANILAL UPADHYAY — modify_order() not implemented (stub)", )
+        return False
+

@@ -1,7 +1,7 @@
-from fastapi import FastAPI, WebSocket, Request
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, WebSocket, Request, Query
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import json
 import asyncio
 import os
@@ -10,7 +10,7 @@ from python_app.broker.session_manager import SessionManager
 
 # Resolve paths relative to THIS file's location — works regardless of cwd
 _BASE_DIR = Path(__file__).parent.parent
-_STATIC_DIR = _BASE_DIR / "dashboards" / "web" / "static"
+_STATIC_DIR = _BASE_DIR / "web" / "static"
 
 app = FastAPI()
 session_manager = SessionManager()
@@ -86,6 +86,25 @@ async def websocket_endpoint(websocket: WebSocket):
             "config": session_manager.config
         })
         await asyncio.sleep(1.0)
+
+@app.get("/brokers/search")
+def search_brokers(
+    q: str = Query(..., min_length=1, max_length=200, description="Search query"),
+    limit: int = Query(20, ge=1, le=100, description="Max results"),
+    api_status: Optional[str] = Query(None, description="Filter by api_status: verified, stub, deprecated, unknown, bank, all"),
+) -> JSONResponse:
+    """
+    Search NSE Clearing registered brokers by name, provider key, or NSE member code.
+    Returns brokers sorted by match quality (exact key > name exact > starts-with > word-match > substring).
+    """
+    from python_app.brokers.search import search_brokers as _do_search
+    results = _do_search(q=q, limit=limit, api_status=api_status)
+    return JSONResponse({
+        "q": q,
+        "count": len(results),
+        "results": results,
+    })
+
 
 if __name__ == "__main__":
     import uvicorn
