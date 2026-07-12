@@ -2,4 +2,6 @@
 //!
 //! Re-exports `http_post` and `http_get` pyfunctions.
 
-pub use crate::http::client::{http_post, http_get};
+mod client;  // declares src/http/client.rs as submodule of http
+
+pub use client::{http_post, http_get};
