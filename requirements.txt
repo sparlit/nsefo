@@ -18,3 +18,5 @@ selenium
 trio
 trio-websocket
 websocket-client
+playwright
+curl_cffi

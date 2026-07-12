@@ -5,6 +5,35 @@ import logging
 from .dhan import DhanProvider
 from .paper import PaperBroker
 from .fenix_broker import FenixDhanProvider
+# ── 15 new broker providers ──────────────────────────────────────────────
+from .aliceblue import AliceBlueProvider
+from .angelone import AngelOneProvider
+from .choice import ChoiceProvider
+from .finvasia import FinvasiaProvider
+from .fivepaisa import FivePaisaProvider
+from .fyers import FyersProvider
+from .iifl import IIFLProvider
+from .kotak import KotakProvider
+from .kotak_neo import KotakNeoProvider
+from .kunjee import KunjeeProvider
+from .master_trust import MasterTrustProvider
+from .motilal import MotilalProvider
+from .upstox import UpstoxProvider
+from .vpc import VPCProvider
+from .zerodha import ZerodhaProvider
+from .moneysukh import MoneysukhProvider
+from .hdfc import HDFCSecuritiesProvider
+from .icici import ICICIDirectProvider
+from .sbi import SBISecuritiesProvider
+from .bajaj import BajajFinancialProvider
+from .geojit import GeojitProvider
+from .sharekhan import SharekhanProvider
+from .anand_rathi import AnandRathiProvider
+from .edelweiss import EdelweissProvider
+from .nirmal_bang import NirmalBangProvider
+from .axis_direct import AxisDirectProvider
+from .groww import GrowwProvider
+from .paytm_money import PaytmMoneyProvider
 
 class SessionManager:
     def __init__(self, config_path: str = "config.json"):
@@ -12,6 +41,14 @@ class SessionManager:
         self.logger = logging.getLogger("SessionManager")
         self.config = self.load_config()
         self.broker = None
+        # TokenManager — centralized token storage + auto-relogin on 401
+        self._token_manager = None
+        try:
+            from python_app.auth.browser_login import TokenManager
+            self._token_manager = TokenManager()
+            self.logger.info("TokenManager ready — auto-relogin enabled")
+        except ImportError:
+            self.logger.warning("browser_login.py not found — auto-relogin disabled (pip install playwright)")
 
     def load_config(self):
         if os.path.exists(self.config_path):
@@ -24,11 +61,13 @@ class SessionManager:
                 self.logger.error(f"Error loading config: {e}")
 
         default_config = {
-            "mode": "live",
-            "provider": "fenix", # Options: dhan, fenix
-            "client_id": "1100625529",
-            "access_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJkaGFuIiwicGFydG5lcklkIjoiIiwiZXhwIjoxNzgzNjIwMDYzLCJpYXQiOjE3ODM1MzM2NjMsInRva2VuQ29uc3VtZXJUeXBlIjoiU0VMRiIsIndlYmhvb2tVcmwiOiIiLCJkaGFuQ2xpZW50SWQiOiIxMTAwNjI1NTI5In0.YoUmvceV94RSkglVGDTyvfDC2Xc2Ga7GznNhVFZ8pi7wiLZwVKzlhMfzJFCIQ_ZklomO4laT_732n33eOZ2Otg",
+            "mode": "paper",
+            "provider": "",
+            "client_id": "",
+            "access_token": "",
             "totp_secret": "",
+            "target_frequency": "scalping",
+            "data_provider": "",
             "risk": {
                 "max_risk_per_trade_percent": 1.0,
                 "daily_max_loss": 5000.0,
@@ -58,6 +97,87 @@ class SessionManager:
 
             if provider_type == "fenix":
                 live_provider = FenixDhanProvider(client_id, access_token)
+            elif provider_type == "aliceblue":
+                live_provider = AliceBlueProvider(client_id, access_token)
+            elif provider_type == "angelone":
+                live_provider = AngelOneProvider(client_id, access_token)
+            elif provider_type == "choice":
+                live_provider = ChoiceProvider(client_id, access_token)
+            elif provider_type == "finvasia":
+                live_provider = FinvasiaProvider(client_id, access_token)
+            elif provider_type == "5paisa":
+                live_provider = FivePaisaProvider(client_id, access_token)
+            elif provider_type == "fyers":
+                live_provider = FyersProvider(client_id, access_token)
+            elif provider_type == "iifl":
+                live_provider = IIFLProvider(client_id, access_token)
+            elif provider_type == "kotak":
+                live_provider = KotakProvider(client_id, access_token)
+            elif provider_type == "kotak_neo":
+                live_provider = KotakNeoProvider(client_id, access_token)
+            elif provider_type == "kunjee":
+                live_provider = KunjeeProvider(client_id, access_token)
+                self.logger.warning(
+                    "Kunjee API base URL is unverified and SSRF-blocked. "
+                    "DEPRECATED — use a supported broker."
+                )
+            elif provider_type == "master_trust":
+                live_provider = MasterTrustProvider(client_id, access_token)
+            elif provider_type == "motilal":
+                live_provider = MotilalProvider(client_id, access_token)
+            elif provider_type == "upstox":
+                live_provider = UpstoxProvider(client_id, access_token)
+            elif provider_type == "vpc":
+                live_provider = VPCProvider(client_id, access_token)
+                if getattr(live_provider, "DEPRECATED", False):
+                    self.logger.warning(
+                        "VPC is DEPRECATED (api.vpcapis.com returns 404). "
+                        "Switch to a supported broker."
+                    )
+            elif provider_type == "zerodha":
+                live_provider = ZerodhaProvider(api_key=self.config.get("api_key", ""), access_token=access_token)
+            elif provider_type == "moneysukh":
+                live_provider = MoneysukhProvider(client_id, access_token, api_key=self.config.get("api_key", ""))
+            elif provider_type == "hdfc":
+                live_provider = HDFCSecuritiesProvider(client_id, access_token)
+            elif provider_type == "icici":
+                live_provider = ICICIDirectProvider(client_id, api_key=self.config.get("api_key", ""), access_token=access_token)
+            elif provider_type == "sbi":
+                live_provider = SBISecuritiesProvider(app_name=client_id, access_token=access_token)
+            elif provider_type == "bajaj":
+                live_provider = BajajFinancialProvider(api_key=self.config.get("api_key", ""), client_id=client_id, access_token=access_token)
+            elif provider_type == "geojit":
+                live_provider = GeojitProvider(
+                    client_id=client_id,
+                    password=self.config.get("password", ""),
+                    yob=self.config.get("yob", ""),
+                    access_token=access_token,
+                )
+            elif provider_type == "sharekhan":
+                live_provider = SharekhanProvider(client_id, access_token)
+            elif provider_type == "anand_rathi":
+                live_provider = AnandRathiProvider(client_id, access_token)
+            elif provider_type == "edelweiss":
+                live_provider = EdelweissProvider(client_id, access_token)
+            elif provider_type == "nirmal_bang":
+                live_provider = NirmalBangProvider(
+                    client_id, access_token, api_key=self.config.get("api_key", "")
+                )
+            elif provider_type == "axis_direct":
+                live_provider = AxisDirectProvider(client_id, access_token)
+            elif provider_type == "groww":
+                live_provider = GrowwProvider(api_key=self.config.get("api_key", ""), access_token=access_token)
+            elif provider_type == "paytm_money":
+                live_provider = PaytmMoneyProvider(
+                    client_id=client_id,
+                    client_secret=self.config.get("client_secret", ""),
+                    access_token=access_token,
+                )
+                if getattr(live_provider, "DEPRECATED", False):
+                    self.logger.warning(
+                        "Paytm Money: F&O segment NOT confirmed. "
+                        "Use Zerodha, AngelOne, or Dhan for options trading."
+                    )
             else:
                 live_provider = DhanProvider(client_id, access_token)
 

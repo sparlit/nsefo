@@ -1,7 +1,9 @@
 use pyo3::prelude::*;
 mod strategies;
 mod analysis;
+mod http_client;
 
+use http_client::HttpClient;
 use strategies::trend::supertrend;
 use strategies::mean_reversion::calculate_rsi;
 use strategies::volatility::calculate_volatility;
@@ -33,5 +35,6 @@ fn nsefo_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(get_volatility_list, m)?)?;
     m.add_function(wrap_pyfunction!(get_supertrend, m)?)?;
     m.add_function(wrap_pyfunction!(calculate_probability, m)?)?;
+    m.add_class::<HttpClient>()?;
     Ok(())
 }
