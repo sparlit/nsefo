@@ -170,6 +170,16 @@ def get_credentials(existing_cfg):
     dp_default = existing_cfg.get("data_provider", "")
     data_provider = _prompt(f"Live data provider for paper mode (broker key, empty=none) [{dp_default}]: ", dp_default)
 
+    # Provider-specific OAuth2 fields
+    refresh_token = _prompt(
+        f"Refresh Token (ICICI OAuth2) [hidden]: ",
+        existing_cfg.get("refresh_token", "")
+    )
+    client_secret = _prompt(
+        f"Client Secret (ICICI OAuth2) [hidden]: ",
+        existing_cfg.get("client_secret", "")
+    )
+
     try:
         capital = float(capital)
     except (ValueError, TypeError):
@@ -187,6 +197,8 @@ def get_credentials(existing_cfg):
         "totp_secret": totp_secret,
         "provider": selected_provider,
         "api_key": api_key,
+        "refresh_token": refresh_token,
+        "client_secret": client_secret,
         "target_frequency": target_frequency,
         "data_provider": data_provider,
         "risk": {

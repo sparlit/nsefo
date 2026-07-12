@@ -1,2 +1,103 @@
 #!/bin/bash
-./setup.sh "$@"
+# ==============================================================================
+# NSEFO Master Pro — Linux Installer
+# Usage: ./install           (interactive setup)
+#        ./install --setup   (force configuration wizard)
+#        ./install --non-interactive  (use existing config.json)
+# ==============================================================================
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
+echo ""
+echo "========================================"
+echo "  NSEFO MASTER PRO — INSTALLATION"
+echo "========================================"
+echo ""
+
+# Parse arguments
+NON_INTERACTIVE=""
+FORCE_SETUP=""
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --non-interactive|-y) NON_INTERACTIVE="1"; shift ;;
+        --setup) FORCE_SETUP="1"; shift ;;
+        *) echo "Unknown option: $1"; exit 1 ;;
+    esac
+done
+
+# Step 1: Python version check
+echo "[1/4] Checking Python..."
+PYTHON_CMD=""
+if command -v python3 &>/dev/null; then
+    PY_VER=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
+    if [[ $(echo "$PY_VER >= 3.10" | bc -l 2>/dev/null || echo 0) == "1" ]] || \
+       [[ "${PY_VER%%.*}" -eq 3 && "${PY_VER#*.}" -ge 10 ]]; then
+        PYTHON_CMD="python3"
+    fi
+fi
+if [ -z "$PYTHON_CMD" ]; then
+    echo "ERROR: Python 3.10+ not found."
+    echo "Install from: https://www.python.org/downloads/"
+    exit 1
+fi
+echo "  Python $($PYTHON_CMD --version) found."
+
+# Step 2: Install dependencies
+echo ""
+echo "[2/4] Installing Python dependencies..."
+$PYTHON_CMD -m pip install -r requirements.txt -q
+$PYTHON_CMD -m pip install maturin -q
+echo "  Dependencies installed."
+
+# Step 3: Compile Rust core
+echo ""
+echo "[3/4] Compiling Rust Performance Core..."
+if command -v cargo &>/dev/null; then
+    cd nsefo_core
+    export PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1
+    if $PYTHON_CMD -m maturin build --release 2>&1; then
+        echo "  Rust core compiled."
+        WHL=$(find target/wheels -name "*.whl" 2>/dev/null | head -1)
+        if [ -n "$WHL" ]; then
+            $PYTHON_CMD -m pip install "$WHL" --force-reinstall -q
+            echo "  nsefo_core installed in site-packages."
+        else
+            echo "  WARNING: No wheel found after build."
+        fi
+    else
+        echo "  WARNING: Rust build failed. Install Rust from https://rustup.rs then re-run."
+    fi
+    cd "$SCRIPT_DIR"
+else
+    echo "  WARNING: Rust not found. Install from https://rustup.rs then re-run to compile the Rust core."
+fi
+
+# Step 4: Configuration wizard
+echo ""
+if [ -n "$NON_INTERACTIVE" ] && [ -f config.json ]; then
+    echo "[4/4] Skipping configuration (non-interactive mode, existing config.json used)."
+else
+    echo "[4/4] Configuration Wizard..."
+    export PYTHONPATH="$SCRIPT_DIR:$PYTHONPATH"
+    $PYTHON_CMD start_master_pro.py --setup 2>/dev/null || \
+    $PYTHON_CMD -c "
+import json, os
+cfg_path = os.path.join('$SCRIPT_DIR', 'config.json')
+if os.path.exists(cfg_path):
+    print('  Existing config found. Run ./nsefo to start.')
+else:
+    print('  No config found. Run ./install --setup to configure.')
+"
+fi
+
+echo ""
+echo "========================================"
+echo "  INSTALLATION COMPLETE"
+echo "========================================"
+echo ""
+echo "  Start the application:"
+echo "    ./nsefo"
+echo "    Or: python3 run.py"
+echo ""

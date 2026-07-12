@@ -9,17 +9,21 @@
         .card { background: white; border-radius: 6px; padding: 15px; margin-bottom: 12px; border-left: 4px solid #3b82f6; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
         .card-buy { border-left-color: #10b981; }
         .card-sell { border-left-color: #ef4444; }
+        .tab-active { color: #3b82f6; border-bottom: 2px solid #3b82f6; }
+        .broker-field { display: none; }
     </style>
 </head>
 <body class="bg-slate-100 font-sans">
+
+    <!-- Navigation -->
     <nav class="bg-slate-900 text-white p-5 flex justify-between shadow-xl">
         <div class="flex items-center space-x-4">
             <span class="text-2xl font-black tracking-tighter text-blue-400">NSEFO MASTER PRO</span>
             <span id="status-mode" class="px-2 py-1 bg-blue-500/20 text-blue-400 text-xs rounded border border-blue-400/30 uppercase font-bold">PAPER MODE</span>
         </div>
         <div class="space-x-8 flex items-center font-medium">
-            <button onclick="showTab('terminal')" class="hover:text-blue-400 transition">Terminal</button>
-            <button onclick="showTab('settings')" class="hover:text-blue-400 transition">Configuration</button>
+            <button onclick="showTab('terminal')" id="tab-terminal" class="hover:text-blue-400 transition border-b-2 border-transparent py-1">Terminal</button>
+            <button onclick="showTab('settings')" id="tab-settings" class="hover:text-blue-400 transition border-b-2 border-transparent py-1">Configuration</button>
             <div class="pl-4 border-l border-slate-700">
                 <span class="text-slate-400 text-sm">Capital:</span>
                 <span id="stat-capital" class="text-emerald-400 font-bold">₹0.00</span>
@@ -27,6 +31,7 @@
         </div>
     </nav>
 
+    <!-- Terminal Tab -->
     <main id="terminal" class="p-8">
         <div class="grid grid-cols-4 gap-6">
             <div><h3 class="text-sm font-bold text-slate-500 mb-4 tracking-widest uppercase">Scanning</h3><div id="col-SCANNING" class="kanban-col"></div></div>
@@ -36,74 +41,399 @@
         </div>
     </main>
 
-    <section id="settings" class="hidden p-10 max-w-3xl mx-auto">
-        <div class="bg-white rounded-xl shadow-2xl overflow-hidden">
-            <div class="bg-slate-900 p-6 text-white"><h2 class="text-xl font-bold">System Credentials & Risk Control</h2></div>
-            <div class="p-8 space-y-6">
-                <div class="grid grid-cols-2 gap-6">
-                    <div><label class="block text-xs font-bold text-slate-500 uppercase mb-2">Trading Mode</label><select id="cfg-mode" class="w-full p-3 bg-slate-50 border rounded-lg focus:ring-2 focus:ring-blue-500"><option value="paper">Paper Trading</option><option value="live">Live Trading</option></select></div>
-                    <div><label class="block text-xs font-bold text-slate-500 uppercase mb-2">Dhan Client ID</label><input type="text" id="cfg-client-id" class="w-full p-3 bg-slate-50 border rounded-lg"></div>
+    <!-- Configuration Tab -->
+    <section id="settings" class="hidden p-8 max-w-4xl mx-auto">
+        <form id="config-form" onsubmit="saveConfig(event)">
+            <div class="space-y-6">
+
+                <!-- Broker Selection -->
+                <div class="bg-white rounded-xl shadow-2xl overflow-hidden">
+                    <div class="bg-slate-900 p-5 text-white flex justify-between items-center">
+                        <h2 class="text-lg font-bold">Broker Configuration</h2>
+                        <span id="broker-status" class="text-xs bg-slate-700 px-3 py-1 rounded-full text-slate-300">Not Connected</span>
+                    </div>
+                    <div class="p-7 space-y-5">
+                        <div class="grid grid-cols-2 gap-5">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-500 uppercase mb-2 tracking-wider">Broker Provider</label>
+                                <select id="cfg-provider" onchange="onBrokerChange()" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm">
+                                    <option value="">-- Select Broker --</option>
+                                    <option value="dhan">Dhan (Fenix SDK)</option>
+                                    <option value="fenix">Dhan (Fenix SDK)</option>
+                                    <option value="zerodha">Zerodha Kite Connect</option>
+                                    <option value="upstox">Upstox</option>
+                                    <option value="fyers">Fyers API v2</option>
+                                    <option value="angelone">AngelOne SmartAPI</option>
+                                    <option value="aliceblue">AliceBlue</option>
+                                    <option value="5paisa">5paisa</option>
+                                    <option value="iifl">IIFL Markets</option>
+                                    <option value="kotak">Kotak Securities</option>
+                                    <option value="kotak_neo">Kotak Neo</option>
+                                    <option value="kunjee">Kunjee</option>
+                                    <option value="master_trust">Master Trust</option>
+                                    <option value="motilal">Motilal Oswal</option>
+                                    <option value="finvasia">Finvasia (Shoonya)</option>
+                                    <option value="choice">Choice Broking</option>
+                                    <option value="vpc">VPC</option>
+                                    <option value="moneysukh">Moneysukh (ONUS Capital)</option>
+                                    <option value="hdfc">HDFC Securities</option>
+                                    <option value="icici">ICICI Direct</option>
+                                    <option value="sbi">SBI Securities</option>
+                                    <option value="bajaj">Bajaj Financial</option>
+                                    <option value="geojit">Geojit</option>
+                                    <option value="sharekhan">Mirae Asset Sharekhan</option>
+                                    <option value="anand_rathi">Anand Rathi</option>
+                                    <option value="edelweiss">Edelweiss</option>
+                                    <option value="nirmal_bang">Nirmal Bang</option>
+                                    <option value="axis_direct">Axis Direct</option>
+                                    <option value="groww">Groww</option>
+                                    <option value="paytm_money">Paytm Money</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-500 uppercase mb-2 tracking-wider">Trading Mode</label>
+                                <select id="cfg-mode" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                    <option value="paper">Paper Trading (Simulated)</option>
+                                    <option value="live">Live Trading (Real Money)</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Common Fields -->
+                        <div class="grid grid-cols-2 gap-5">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-500 uppercase mb-2 tracking-wider">Client ID / User ID</label>
+                                <input type="text" id="cfg-client-id" placeholder="e.g. AB123456" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-500 uppercase mb-2 tracking-wider">API Access Token</label>
+                                <input type="password" id="cfg-token" placeholder="Your API access token" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm">
+                            </div>
+                        </div>
+
+                        <!-- Zerodha extra -->
+                        <div id="f-zerodha" class="broker-field">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-500 uppercase mb-2 tracking-wider">Kite API Key</label>
+                                <input type="text" id="cfg-zerodha-api-key" placeholder="kitecon_xxxxxxxxxxxx" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm">
+                                <p class="text-xs text-slate-400 mt-1">Get from kite.zerodha.com → Console → API Keys</p>
+                            </div>
+                        </div>
+
+                        <!-- AngelOne extra -->
+                        <div id="f-angelone" class="broker-field grid grid-cols-2 gap-5">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-500 uppercase mb-2 tracking-wider">AngelOne API Key</label>
+                                <input type="text" id="cfg-angelone-api-key" placeholder="From SmartAPI portal" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-500 uppercase mb-2 tracking-wider">Password + TOTP</label>
+                                <input type="password" id="cfg-angelone-password" placeholder="Account password" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm">
+                            </div>
+                        </div>
+
+                        <!-- AliceBlue extra -->
+                        <div id="f-aliceblue" class="broker-field grid grid-cols-2 gap-5">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-500 uppercase mb-2 tracking-wider">App Code</label>
+                                <input type="text" id="cfg-aliceblue-app-code" placeholder="From AliceBlue developer portal" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-500 uppercase mb-2 tracking-wider">API Secret</label>
+                                <input type="password" id="cfg-aliceblue-api-secret" placeholder="From AliceBlue developer portal" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm">
+                            </div>
+                        </div>
+
+                        <!-- IIFL extra -->
+                        <div id="f-iifl" class="broker-field grid grid-cols-2 gap-5">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-500 uppercase mb-2 tracking-wider">IIFL API Key</label>
+                                <input type="text" id="cfg-iifl-api-key" placeholder="From IIFL developer portal" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-500 uppercase mb-2 tracking-wider">Password</label>
+                                <input type="password" id="cfg-iifl-password" placeholder="IIFL account password" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm">
+                            </div>
+                        </div>
+
+                        <!-- Kotak / Kotak Neo extra -->
+                        <div id="f-kotak-common" class="broker-field">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-500 uppercase mb-2 tracking-wider">Consumer Key</label>
+                                <input type="text" id="cfg-kotak-consumer-key" placeholder="From Kotak developer portal" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm">
+                            </div>
+                        </div>
+
+                        <!-- Finvasia extra -->
+                        <div id="f-finvasia" class="broker-field grid grid-cols-2 gap-5">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-500 uppercase mb-2 tracking-wider">Vendor Code</label>
+                                <input type="text" id="cfg-finvasia-vendor-code" placeholder="Shoonya vendor code" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-500 uppercase mb-2 tracking-wider">Year of Birth (YOB)</label>
+                                <input type="text" id="cfg-finvasia-yob" placeholder="1990" maxlength="4" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm">
+                            </div>
+                        </div>
+
+                        <!-- Motilal extra -->
+                        <div id="f-motilal" class="broker-field grid grid-cols-2 gap-5">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-500 uppercase mb-2 tracking-wider">Motilal API Key</label>
+                                <input type="text" id="cfg-motilal-api-key" placeholder="From Motilal developer portal" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-500 uppercase mb-2 tracking-wider">Password</label>
+                                <input type="password" id="cfg-motilal-password" placeholder="Motilal account password" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm">
+                            </div>
+                        </div>
+
+                        <!-- Master Trust extra -->
+                        <div id="f-master_trust" class="broker-field">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-500 uppercase mb-2 tracking-wider">App Key</label>
+                                <input type="text" id="cfg-master-trust-app-key" placeholder="From Master Trust developer portal" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm">
+                            </div>
+                        </div>
+
+                        <!-- TOTP (shared) -->
+                        <div id="f-totp" class="broker-field">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-500 uppercase mb-2 tracking-wider">TOTP Secret (for Auto-Login)</label>
+                                <input type="text" id="cfg-totp-secret" placeholder="pyotp base32 secret" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm">
+                                <p class="text-xs text-slate-400 mt-1">Used for AngelOne, Choice, Finvasia — generate with any TOTP app (Google Authenticator)</p>
+                            </div>
+                        </div>
+
+                        <!-- Moneysukh extra -->
+                        <div id="f-moneysukh" class="broker-field">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-500 uppercase mb-2 tracking-wider">Moneysukh API Key</label>
+                                <input type="text" id="cfg-moneysukh-api-key" placeholder="Your Moneysukh API key" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm">
+                            </div>
+                        </div>
+
+                        <!-- Geojit extra -->
+                        <div id="f-geojit" class="broker-field grid grid-cols-2 gap-5">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-500 uppercase mb-2 tracking-wider">Geojit Password</label>
+                                <input type="password" id="cfg-geojit-password" placeholder="Geojit trading password" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-500 uppercase mb-2 tracking-wider">Year of Birth (YYYY)</label>
+                                <input type="text" id="cfg-geojit-yob" placeholder="1990" maxlength="4" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm">
+                            </div>
+                        </div>
+
+                        <button type="button" onclick="testConnection()" class="w-full bg-emerald-600 text-white py-3 rounded-lg font-bold uppercase tracking-wider hover:bg-emerald-700 shadow-lg shadow-emerald-500/20 transition-all text-sm">Test Connection</button>
+                    </div>
                 </div>
-                <div><label class="block text-xs font-bold text-slate-500 uppercase mb-2">API Access Token</label><input type="password" id="cfg-token" class="w-full p-3 bg-slate-50 border rounded-lg"></div>
-                <div class="grid grid-cols-2 gap-6">
-                    <div><label class="block text-xs font-bold text-slate-500 uppercase mb-2">Initial Capital</label><input type="number" id="cfg-capital" class="w-full p-3 bg-slate-50 border rounded-lg"></div>
-                    <div><label class="block text-xs font-bold text-slate-500 uppercase mb-2">Fixed Lots</label><input type="number" id="cfg-lots" class="w-full p-3 bg-slate-50 border rounded-lg"></div>
+
+                <!-- Risk & Capital -->
+                <div class="bg-white rounded-xl shadow-2xl overflow-hidden">
+                    <div class="bg-slate-900 p-5 text-white">
+                        <h2 class="text-lg font-bold">Risk Management</h2>
+                    </div>
+                    <div class="p-7 space-y-5">
+                        <div class="grid grid-cols-3 gap-5">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-500 uppercase mb-2 tracking-wider">Operational Capital (₹)</label>
+                                <input type="number" id="cfg-capital" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-500 uppercase mb-2 tracking-wider">Max Risk Per Trade (%)</label>
+                                <input type="number" step="0.1" id="cfg-max-risk" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-500 uppercase mb-2 tracking-wider">Fixed Lot Count</label>
+                                <input type="number" id="cfg-lots" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-500 uppercase mb-2 tracking-wider">Daily Max Loss (₹)</label>
+                            <input type="number" id="cfg-daily-loss" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm">
+                        </div>
+                    </div>
                 </div>
-                <button onclick="saveConfig()" class="w-full bg-blue-600 text-white py-4 rounded-lg font-black uppercase tracking-widest hover:bg-blue-700 shadow-lg shadow-blue-500/30 transition-all">Apply Operational Changes</button>
+
+                <div class="flex gap-4">
+                    <button type="submit" class="flex-1 bg-blue-600 text-white py-4 rounded-xl font-black uppercase tracking-widest hover:bg-blue-700 shadow-xl shadow-blue-500/30 transition-all">Save & Apply Configuration</button>
+                    <button type="button" onclick="location.reload()" class="px-8 bg-slate-200 text-slate-700 py-4 rounded-xl font-bold hover:bg-slate-300 transition-all">Reset</button>
+                </div>
+
+                <!-- Save feedback -->
+                <div id="save-feedback" class="hidden text-center py-3 rounded-lg font-bold text-sm"></div>
             </div>
-        </div>
+        </form>
     </section>
 
+    <!-- Connection Test Modal -->
+    <div id="test-modal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div class="bg-white rounded-2xl shadow-2xl p-8 max-w-sm w-full mx-4 text-center">
+            <div id="test-spinner" class="text-4xl mb-4">⏳</div>
+            <div id="test-result" class="text-lg font-bold mb-2">Testing connection...</div>
+            <div id="test-detail" class="text-sm text-slate-500 mb-6"></div>
+            <button onclick="closeModal()" class="px-6 py-2 bg-slate-900 text-white rounded-lg font-bold hover:bg-slate-700">Close</button>
+        </div>
+    </div>
+
     <script>
+        const PROVIDER_FIELDS = {
+            zerodha:      ['f-zerodha', 'f-totp'],
+            angelone:     ['f-angelone', 'f-totp'],
+            aliceblue:    ['f-aliceblue', 'f-totp'],
+            iifl:         ['f-iifl', 'f-totp'],
+            kotak:        ['f-kotak-common'],
+            kotak_neo:    ['f-kotak-common'],
+            finvasia:     ['f-finvasia', 'f-totp'],
+            motilal:      ['f-motilal'],
+            master_trust: ['f-master_trust'],
+            choice:       ['f-totp'],
+            moneysukh:    ['f-moneysukh'],
+            geojit:       ['f-geojit'],
+            hdfc:         [],
+            icici:        [],
+            sbi:          [],
+            bajaj:        [],
+            sharekhan:    [],
+            anand_rathi:  [],
+            edelweiss:    [],
+            nirmal_bang:  [],
+            axis_direct:  [],
+            groww:        [],
+            paytm_money:  [],
+        };
+
         function showTab(id) {
             document.getElementById('terminal').classList.toggle('hidden', id !== 'terminal');
             document.getElementById('settings').classList.toggle('hidden', id !== 'settings');
-            if(id === 'settings') loadConfig();
+            document.getElementById('tab-terminal').classList.toggle('tab-active', id === 'terminal');
+            document.getElementById('tab-settings').classList.toggle('tab-active', id === 'settings');
+            if (id === 'settings') loadConfig();
         }
 
         async function loadConfig() {
-            const r = await fetch('/config'); const d = await r.json();
-            document.getElementById('cfg-mode').value = d.mode;
-            document.getElementById('cfg-client-id').value = d.client_id;
-            document.getElementById('cfg-token').value = d.access_token;
-            document.getElementById('cfg-capital').value = d.risk.capital;
-            document.getElementById('cfg-lots').value = d.risk.fixed_lots;
+            const r = await fetch('/config');
+            const d = await r.json();
+            document.getElementById('cfg-provider').value = d.provider || '';
+            document.getElementById('cfg-mode').value = d.mode || 'paper';
+            document.getElementById('cfg-client-id').value = d.client_id || '';
+            document.getElementById('cfg-token').value = d.access_token || '';
+            document.getElementById('cfg-capital').value = d.risk?.capital || 1000000;
+            document.getElementById('cfg-lots').value = d.risk?.fixed_lots || 1;
+            document.getElementById('cfg-max-risk').value = d.risk?.max_risk_per_trade_percent || 1.0;
+            document.getElementById('cfg-daily-loss').value = d.risk?.daily_max_loss || 5000;
+            document.getElementById('cfg-totp-secret').value = d.totp_secret || '';
+            onBrokerChange();
         }
 
-        async function saveConfig() {
+        function onBrokerChange() {
+            const p = document.getElementById('cfg-provider').value;
+            // Hide all broker-specific fields
+            document.querySelectorAll('.broker-field').forEach(el => el.style.display = 'none');
+            // Show fields for selected broker
+            if (PROVIDER_FIELDS[p]) {
+                PROVIDER_FIELDS[p].forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) el.style.display = p === 'angelone' || p === 'finvasia' || p === 'iifl' || p === 'motilal' ? 'grid' : 'block';
+                });
+            }
+        }
+
+        async function saveConfig(e) {
+            if (e) e.preventDefault();
+            const provider = document.getElementById('cfg-provider').value;
             const config = {
-                mode: document.getElementById('cfg-mode').value,
-                client_id: document.getElementById('cfg-client-id').value,
-                access_token: document.getElementById('cfg-token').value,
+                provider:  provider,
+                mode:      document.getElementById('cfg-mode').value,
+                client_id: document.getElementById('cfg-client-id').value.trim(),
+                access_token: document.getElementById('cfg-token').value.trim(),
+                totp_secret: document.getElementById('cfg-totp-secret').value.trim(),
                 risk: {
-                    capital: parseFloat(document.getElementById('cfg-capital').value),
-                    fixed_lots: parseInt(document.getElementById('cfg-lots').value)
+                    capital: parseFloat(document.getElementById('cfg-capital').value) || 1000000,
+                    fixed_lots: parseInt(document.getElementById('cfg-lots').value) || 1,
+                    max_risk_per_trade_percent: parseFloat(document.getElementById('cfg-max-risk').value) || 1.0,
+                    daily_max_loss: parseFloat(document.getElementById('cfg-daily-loss').value) || 5000,
                 }
             };
-            await fetch('/config', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(config)});
-            location.reload();
+            // Strip empty optional fields
+            if (!config.totp_secret) delete config.totp_secret;
+            const res = await fetch('/config', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(config)
+            });
+            const fb = document.getElementById('save-feedback');
+            if (res.ok) {
+                fb.textContent = 'Configuration saved. Restart the application to apply changes.';
+                fb.className = 'text-center py-3 rounded-lg font-bold text-sm bg-green-100 text-green-800';
+                fb.classList.remove('hidden');
+            } else {
+                fb.textContent = 'Failed to save configuration.';
+                fb.className = 'text-center py-3 rounded-lg font-bold text-sm bg-red-100 text-red-800';
+                fb.classList.remove('hidden');
+            }
         }
 
+        function showModal(msg, detail, isOk) {
+            document.getElementById('test-result').textContent = msg;
+            document.getElementById('test-detail').textContent = detail || '';
+            document.getElementById('test-spinner').textContent = isOk ? '✅' : (isOk === false ? '❌' : '⏳');
+            document.getElementById('test-modal').classList.remove('hidden');
+        }
+        function closeModal() { document.getElementById('test-modal').classList.add('hidden'); }
+
+        async function testConnection() {
+            const provider = document.getElementById('cfg-provider').value;
+            if (!provider) { showModal('No broker selected', 'Choose a broker provider first.', false); return; }
+            showModal('Testing...', 'Attempting login with current credentials', null);
+            const config = {
+                provider: provider,
+                mode: 'live',
+                client_id: document.getElementById('cfg-client-id').value.trim(),
+                access_token: document.getElementById('cfg-token').value.trim(),
+                totp_secret: document.getElementById('cfg-totp-secret').value.trim(),
+                risk: { capital: 0 }
+            };
+            const res = await fetch('/config', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(config)
+            });
+            if (!res.ok) { showModal('Config save failed', await res.text(), false); return; }
+            const con = await fetch('/config/test');
+            const data = await con.json();
+            if (data.login_ok) {
+                showModal('Connection Successful', `${provider} login verified. You are ready for live trading.`, true);
+            } else {
+                showModal('Connection Failed', data.error || 'Check your credentials and try again.', false);
+            }
+        }
+
+        // WebSocket
         const ws = new WebSocket(`ws://${window.location.host}/ws`);
         ws.onmessage = (e) => {
             const d = JSON.parse(e.data);
-            document.getElementById('stat-capital').innerText = '₹' + d.dashboard.summary.capital.toLocaleString();
-            document.getElementById('status-mode').innerText = d.dashboard.summary.mode + ' mode';
-
-            // Render Kanban Columns
+            document.getElementById('stat-capital').innerText = '₹' + (d.dashboard?.summary?.capital || 0).toLocaleString();
+            document.getElementById('status-mode').innerText = (d.dashboard?.summary?.mode || 'paper').toUpperCase() + ' MODE';
             ['SCANNING', 'SIGNAL', 'ACTIVE', 'CLOSED'].forEach(col => {
                 const el = document.getElementById('col-' + col);
+                if (!el) return;
                 el.innerHTML = '';
-                (d.dashboard.kanban[col] || []).forEach(item => {
+                (d.dashboard?.kanban?.[col] || []).forEach(item => {
                     const card = document.createElement('div');
                     card.className = 'card ' + (item.side === 'BUY' ? 'card-buy' : item.side === 'SELL' ? 'card-sell' : '');
-                    card.innerHTML = typeof item === 'string' ? `<b>${item}</b><br><small class="text-slate-400 font-bold uppercase tracking-tighter">Analyzing Neural Clusters...</small>` :
-                                     `<div class="flex justify-between font-bold"><span>${item.symbol}</span><span class="${item.side === 'BUY' ? 'text-emerald-500' : 'text-rose-500'}">${item.side}</span></div>
-                                      <div class="text-xs text-slate-500 mt-2">Entry: ₹${item.price} | Qty: ${item.quantity || ''}</div>`;
+                    card.innerHTML = typeof item === 'string'
+                        ? `<b>${item}</b><br><small class="text-slate-400 font-bold uppercase tracking-tighter">Analyzing...</small>`
+                        : `<div class="flex justify-between font-bold"><span>${item.symbol}</span><span class="${item.side === 'BUY' ? 'text-emerald-500' : 'text-rose-500'}">${item.side}</span></div><div class="text-xs text-slate-500 mt-2">Entry: ₹${item.price || '—'} | Qty: ${item.quantity || ''}</div>`;
                     el.appendChild(card);
                 });
             });
         };
+        ws.onclose = () => { document.getElementById('status-mode').textContent = 'DISCONNECTED'; };
+
+        // Init tab
+        showTab('terminal');
     </script>
 </body>
 </html>

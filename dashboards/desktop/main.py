@@ -113,4 +113,4 @@ if __name__ == "__main__":
     trade_app = TradingApp()
     win = DashboardWindow(trade_app.session, trade_app)
     win.show()
-    # sys.exit(qt_app.exec())
+    sys.exit(qt_app.exec())

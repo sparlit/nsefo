@@ -1,3 +1,36 @@
 #!/bin/bash
-export PYTHONPATH=$PYTHONPATH:.
-python3 start_master_pro.py "$@"
+# ==============================================================================
+# NSEFO Master Pro — Linux Launcher
+# Usage: ./nsefo           (start application)
+#        ./nsefo "Buy Nifty 24500 ce"  (single NLP command)
+# ==============================================================================
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
+# Set PYTHONPATH so python_app and dashboards are importable
+export PYTHONPATH="$SCRIPT_DIR:$PYTHONPATH"
+
+# Check config exists
+if [ ! -f config.json ]; then
+    echo "ERROR: config.json not found."
+    echo "Run ./install first to set up the application."
+    exit 1
+fi
+
+# Verify Python dependencies
+if ! python3 -c "import fastapi, uvicorn" 2>/dev/null; then
+    echo "ERROR: Required packages not installed."
+    echo "Run ./install to install dependencies."
+    exit 1
+fi
+
+echo ""
+echo "========================================"
+echo "  NSEFO MASTER PRO — STARTUP"
+echo "========================================"
+echo ""
+
+# Pass all arguments to run.py
+exec python3 run.py "$@"

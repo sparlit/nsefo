@@ -141,7 +141,13 @@ class SessionManager:
             elif provider_type == "hdfc":
                 live_provider = HDFCSecuritiesProvider(client_id, access_token)
             elif provider_type == "icici":
-                live_provider = ICICIDirectProvider(client_id, api_key=self.config.get("api_key", ""), access_token=access_token)
+                live_provider = ICICIDirectProvider(
+                    client_id=client_id,
+                    api_key=self.config.get("api_key", ""),
+                    access_token=access_token,
+                    refresh_token=self.config.get("refresh_token", ""),
+                    client_secret=self.config.get("client_secret", ""),
+                )
             elif provider_type == "sbi":
                 live_provider = SBISecuritiesProvider(app_name=client_id, access_token=access_token)
             elif provider_type == "bajaj":

@@ -76,21 +76,21 @@ class FenixDhanProvider(Broker):
 
     def get_order_status(self, order_id: str) -> Dict[str, Any]:
         try: return self.api.fetch_order(order_id)
-        except: return {}
+        except Exception: return {}
 
     def get_positions(self) -> List[Dict[str, Any]]:
         try: return self.api.fetch_net_positions()
-        except: return []
+        except Exception: return []
 
     def get_holdings(self) -> List[Dict[str, Any]]:
         try: return self.api.fetch_holdings()
-        except: return []
+        except Exception: return []
 
     def cancel_order(self, order_id: str) -> bool:
         try:
             resp = self.api.cancel_order(order_id)
             return resp.get('status') == 'success'
-        except: return False
+        except Exception: return False
 
     def start_data_feed(self, symbols: List[Dict[str, Any]], callback: Callable[[Dict[str, Any]], None]):
         self.logger.info("Fenix Real-time Feed synchronization link active.")

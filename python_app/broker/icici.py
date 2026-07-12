@@ -1,3 +1,4 @@
+import os
 import logging
 from typing import List, Dict, Any, Optional, Callable
 
@@ -12,15 +13,54 @@ from .base import Broker
 class ICICIDirectProvider(Broker):
     """
     ICICI Direct broker implementation using HTTP REST API.
-    Auth: X-API-Key + X-Client-Id + access_token
-    API Base: https://api.icicidirect.com
+
+    AUTH — OAuth2 with refresh-token:
+      ICICI Direct uses OAuth2. The initial login requires exchanging
+      client credentials (api_key + client_secret + authorization code)
+      for an access_token + refresh_token. The refresh_token is used to
+      obtain a new access_token when the current one expires.
+
+    REQUIRED config.json fields for ICICI:
+      {
+        "client_id": "your client id",
+        "api_key": "your api key",
+        "client_secret": "your client secret",
+        "access_token": "current access token",
+        "refresh_token": "oauth2 refresh token",
+        "mode": "paper|live"
+      }
+
+    OAUTH2 FLOW (one-time setup):
+      1. Register at https://smartapi.angelone.in (or your broker's dev portal)
+         to get api_key + client_secret.
+      2. Authorize via: GET https://api.icicidirect.com/api/authorize
+         with response_type="code", client_id, redirect_uri, scope.
+      3. Exchange the authorization code for tokens via:
+         POST {BASE_URL}/api/Token  with grant_type="authorization_code"
+      4. Store the returned refresh_token in config.json.
+         Access token expires in ~3600s; refresh token lasts longer.
+
+    AUTO-REFRESH:
+      On receiving HTTP 401, the provider automatically calls
+      _refresh_access_token() using the stored refresh_token and
+      updates config.json with the new access_token.
     """
     BASE_URL = "https://api.icicidirect.com"
 
-    def __init__(self, client_id: str, api_key: str = "", access_token: str = "", **kwargs):
+    def __init__(
+        self,
+        client_id: str,
+        api_key: str = "",
+        access_token: str = "",
+        refresh_token: str = "",
+        client_secret: str = "",
+        **kwargs,
+    ):
         self.client_id = client_id
         self.api_key = api_key
         self.access_token = access_token
+        self.refresh_token = refresh_token
+        self.client_secret = client_secret
         self.verify_ssl = kwargs.get("verify_ssl", True)
         self.logger = logging.getLogger("ICICIDirectProvider")
         self._authenticated = False
@@ -39,23 +79,112 @@ class ICICIDirectProvider(Broker):
             self._client = httpx.Client(verify=self.verify_ssl, timeout=10.0)
         return self._client
 
-    def login(self, **kwargs) -> bool:
-        """Authenticate with ICICI Direct API."""
-        if httpx is None:
-            self.logger.error("httpx is not installed. Install it with: pip install httpx")
+    def _refresh_access_token(self) -> bool:
+        """
+        Exchange refresh_token for a new access_token.
+        Returns True if refresh succeeded and self.access_token is updated.
+        Updates self.access_token in-memory and returns the new value.
+
+        ICICI Direct token endpoint (common pattern):
+          POST {BASE_URL}/api/Token
+          Body: grant_type=refresh_token&refresh_token=<refresh_token>&client_id=<api_key>&client_secret=<client_secret>
+        """
+        if not self.refresh_token:
+            self.logger.error("No refresh_token available. Cannot refresh access token.")
             return False
         try:
-            url = f"{self.BASE_URL}/api/Profile"
-            response = self._get_client().get(url, headers=self._get_headers())
-            if response.status_code == 200:
-                self._authenticated = True
-                self.logger.info("ICICI Direct authentication successful")
-                return True
-            else:
-                self.logger.error(f"ICICI Direct auth failed: {response.status_code} - {response.text}")
-                return False
+            url = f"{self.BASE_URL}/api/Token"
+            payload = {
+                "grant_type": "refresh_token",
+                "refresh_token": self.refresh_token,
+                "client_id": self.api_key,
+                "client_secret": self.client_secret,
+            }
+            # ICICI may use form-encoded or JSON — trying JSON first
+            resp = self._get_client().post(
+                url,
+                json=payload,
+                headers={
+                    "Content-Type": "application/json",
+                    "X-API-Key": self.api_key,
+                    "X-Client-Id": self.client_id,
+                },
+                timeout=15,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                new_access = data.get("access_token", "")
+                new_refresh = data.get("refresh_token", self.refresh_token)
+                if new_access:
+                    self.access_token = new_access
+                    self.refresh_token = new_refresh
+                    self.logger.info("Access token refreshed successfully.")
+                    # Update config.json so tokens persist
+                    self._save_tokens_to_config(new_access, new_refresh)
+                    return True
+            self.logger.error("Token refresh failed (%d): %s", resp.status_code, resp.text)
+            return False
         except Exception as e:
-            self.logger.error(f"ICICI Direct Login Error: {e}")
+            self.logger.error("Token refresh exception: %s", e)
+            return False
+
+    def _save_tokens_to_config(self, access_token: str, refresh_token: str):
+        """Persist updated tokens to config.json for next launch."""
+        try:
+            import json as _json
+            from python_app.core.state import global_state
+            cfg_path = "config.json"
+            if os.path.exists(cfg_path):
+                with open(cfg_path) as f:
+                    cfg = _json.load(f)
+                cfg["access_token"] = access_token
+                cfg["refresh_token"] = refresh_token
+                with open(cfg_path, "w") as f:
+                    _json.dump(cfg, f, indent=4)
+                self.logger.info("Tokens updated in config.json.")
+        except Exception as e:
+            self.logger.warning("Could not persist tokens to config.json: %s", e)
+
+    def login(self, **kwargs) -> bool:
+        """
+        Authenticate with ICICI Direct API.
+        - If access_token is valid, verify via /api/Profile
+        - If access_token is empty or 401 received, attempt refresh via refresh_token
+        - Fallback: if refresh fails, return False (user must re-authorize)
+        """
+        if httpx is None:
+            self.logger.error("httpx not installed. Install: pip install httpx")
+            return False
+
+        if not self.access_token:
+            self.logger.error("No access_token. Complete OAuth2 authorization first.")
+            return False
+
+        # Try with current token
+        if self._verify_token():
+            self._authenticated = True
+            return True
+
+        # Token invalid or expired — try refresh
+        if self.refresh_token:
+            self.logger.info("Access token expired. Attempting refresh...")
+            if self._refresh_access_token() and self._verify_token():
+                self._authenticated = True
+                return True
+
+        self.logger.error(
+            "ICICI Direct auth failed. Ensure refresh_token is set in config.json.\n"
+            "To get refresh_token: complete OAuth2 authorization flow and store the refresh_token."
+        )
+        return False
+
+    def _verify_token(self) -> bool:
+        """Check if current access_token is still valid."""
+        try:
+            url = f"{self.BASE_URL}/api/Profile"
+            resp = self._get_client().get(url, headers=self._get_headers(), timeout=10)
+            return resp.status_code == 200
+        except Exception:
             return False
 
     def get_market_data(self, symbols: List[Dict[str, str]]) -> Dict[str, Any]:

@@ -1,8 +1,23 @@
 """
 Nirmal Bang Broker Implementation (HTTP REST)
-Auth: X-Api-Key + Authorization: Bearer {access_token}
-Base: https://www.nirmalbang.com/api
-API Docs: https://www.nirmalbang.com/api
+
+AUTH: X-Api-Key header + Authorization: Bearer {access_token}
+
+BASE_URL STATUS — VERIFICATION REQUIRED:
+  https://www.nirmalbang.com/api  — returns HTTP 404 (site has no documented REST API)
+  Nirmal Bang uses the ODIN terminal + "Beyond Trading" web platform.
+  No public REST API documentation found at nirmalbang.com.
+
+  The endpoints below (/v1/profile, /v1/quote, /v1/orders, etc.) are
+  PLACEHOLDERS that follow the common Indian broker REST pattern.
+  YOU MUST verify them against a real browser Network trace (F12 → Network tab)
+  before using this broker in live mode.
+
+  To verify: log into Nirmal Bang's web trading platform, open DevTools F12,
+  perform a quote lookup, and copy the actual fetch/XHR URL from the Network tab.
+
+  If Nirmal Bang has no public API, consider switching to a broker with a
+  documented API (Zerodha, AngelOne, Dhan, Fyers, etc.).
 """
 import logging
 from typing import List, Dict, Any, Optional, Callable
@@ -15,10 +30,19 @@ except ImportError:
 
 from .base import Broker
 
+# ─── VERIFICATION REQUIRED ───────────────────────────────────────────────────
+# The BASE_URL below is a PLACEHOLDER. It returns HTTP 404.
+# Replace with the actual Nirmal Bang API base URL from browser inspection.
+# Known to be wrong: https://www.nirmalbang.com/api  (404 on all endpoints)
 BASE_URL = "https://www.nirmalbang.com/api"
+# ─────────────────────────────────────────────────────────────────────────────
 
 
 class NirmalBangProvider(Broker):
+    # Marked non-functional until BASE_URL is verified against real API traces.
+    # See docstring above for details.
+    DEPRECATED = True
+
     def __init__(self, client_id: str, access_token: str = "", api_key: str = "", **kwargs):
         self.client_id = client_id
         self.api_key = api_key
@@ -33,6 +57,15 @@ class NirmalBangProvider(Broker):
         }
         if self.access_token:
             self._headers["Authorization"] = f"Bearer {self.access_token}"
+
+        # CRITICAL WARNING: BASE_URL returns 404 — broker is non-functional
+        self.logger.warning(
+            "[NirmalBangProvider] BASE_URL is UNVERIFIED (https://www.nirmalbang.com/api → HTTP 404). "
+            "This broker will fail connectivity checks. "
+            "You MUST verify the real API base URL from browser DevTools (F12 → Network) "
+            "before using this broker in live mode. "
+            "Consider using Zerodha, AngelOne, Dhan, or Fyers instead."
+        )
 
     def _get_session(self) -> bool:
         """Validate session / fetch user profile."""

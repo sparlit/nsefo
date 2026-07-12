@@ -5,20 +5,31 @@ from typing import List, Dict, Any
 import json
 import asyncio
 import os
+from pathlib import Path
 from python_app.broker.session_manager import SessionManager
-# Global reference to the trading application instance
-# In real prod, this is injected or managed via a singleton
-from python_app.main import TradingApp
+
+# Resolve paths relative to THIS file's location — works regardless of cwd
+_BASE_DIR = Path(__file__).parent.parent
+_STATIC_DIR = _BASE_DIR / "dashboards" / "web" / "static"
 
 app = FastAPI()
 session_manager = SessionManager()
-trade_engine = TradingApp()
+# Lazy init — TradingApp() triggers broker login, defer until first request
+_trade_engine = None
 
-app.mount("/static", StaticFiles(directory="dashboards/web/static"), name="static")
+def _get_engine():
+    global _trade_engine
+    if _trade_engine is None:
+        from python_app.main import TradingApp
+        _trade_engine = TradingApp()
+    return _trade_engine
+
+app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 
 @app.get("/", response_class=HTMLResponse)
 async def get_index():
-    with open("dashboards/web/static/index.html") as f:
+    index_path = _STATIC_DIR / "index.html"
+    with open(index_path, "r", encoding="utf-8") as f:
         return HTMLResponse(content=f.read())
 
 @app.get("/config")
@@ -29,13 +40,29 @@ def get_config():
 async def update_config(request: Request):
     new_config = await request.json()
     session_manager.save_config(new_config)
+    # Reload the broker so new credentials take effect on next use
+    session_manager.broker = None
     return {"status": "success"}
+
+@app.get("/config/test")
+def test_connection():
+    """Test broker connection with current config."""
+    try:
+        broker = session_manager.get_broker()
+        ok = broker.login() if broker else False
+        if ok:
+            return {"login_ok": True}
+        else:
+            return {"login_ok": False, "error": "Login returned False — check credentials"}
+    except Exception as e:
+        return {"login_ok": False, "error": str(e)}
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     while True:
         # Pushing REAL data from the Coordinator and Engine
+        trade_engine = _get_engine()
         active_trades = [
             {"symbol": t['symbol'], "side": t['side'], "price": t['price']}
             for t in trade_engine.coordinator.active_trades.values()
@@ -62,4 +89,4 @@ async def websocket_endpoint(websocket: WebSocket):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=9099)
