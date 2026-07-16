@@ -128,7 +128,9 @@ class Coordinator:
 
     def __init__(self, broker: Any, risk_manager: Any = None):
         self.broker = broker
-        self.risk_manager = risk_manager  # May be None — circuit breaker recording skipped if so
+        self.risk_manager = risk_manager
+        if self.risk_manager:
+            self.risk_manager.cb.reset_day()  # May be None — circuit breaker recording skipped if so
         self.state = global_state  # used for logging only
         self._exit_requested = threading.Event()
         self._track_thread: Optional[threading.Thread] = None
