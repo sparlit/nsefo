@@ -51,21 +51,22 @@ class CredentialsManager:
             return None
         key = os.environ.get(self._KEY_ENV)
         if not key:
-            # Generate a key on first use and save to env
-            key = Fernet.generate_key().decode()
-            os.environ[self._KEY_ENV] = key
+            raise RuntimeError(
+                f"NSEFO_CREDENTIALS_KEY environment variable is not set. "
+                f"Set it to a Fernet-compatible 32-byte base64-encoded key. "
+                f"Generate with: python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
+            )
         return Fernet(key.encode())
 
     def _encrypt(self, data: str) -> str:
         if self._fernet:
             return self._fernet.encrypt(data.encode()).decode()
-        # Fallback: base64 obfuscation (NOT secure, only for dev)
-        return base64.b64encode(data.encode()).decode()
+        raise RuntimeError("cryptography package is not installed — cannot encrypt credentials")
 
     def _decrypt(self, token: str) -> str:
         if self._fernet:
             return self._fernet.decrypt(token.encode()).decode()
-        return base64.b64decode(token.encode()).decode()
+        raise RuntimeError("cryptography package is not installed — cannot decrypt credentials")
 
     def save(self, provider_key: str, credentials: Dict[str, str]):
         """

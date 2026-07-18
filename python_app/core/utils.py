@@ -9,24 +9,43 @@ def timed_input_with_default(prompt: str, suggestion: str, timeout: int = 10) ->
     """
     Asks the user for input with a timeout.
     If no input is received, returns the suggestion.
+
+    Uses select (Unix) or msvcrt (Windows) to avoid blocking indefinitely
+    on a closed/stdin pipe in the daemon thread.
     """
     result = [None]
     event = threading.Event()
 
     def get_input():
         try:
-            # We use a wrapper to handle cases where input() is not available
-            val = input(f"{prompt} (Default: {suggestion}) [Timeout {timeout}s]: ")
-            result[0] = val
-        except EOFError:
-            logger.debug("Input stream ended (EOF).")
+            import sys
+            import select as _select
+
+            def _has_input() -> bool:
+                """Return True if stdin has data ready within the timeout window."""
+                try:
+                    if sys.platform == "win32":
+                        import msvcrt
+                        return msvcrt.kbhit()
+                    else:
+                        return _select.select([sys.stdin], [], [], 0) == ([sys.stdin], [], [])
+                except Exception:
+                    return False
+
+            # Poll until timeout or data available
+            start = time.monotonic()
+            while (time.monotonic() - start) < timeout:
+                if _has_input():
+                    val = sys.stdin.readline()
+                    result[0] = val.rstrip("\r\n") if val else suggestion
+                    break
+                time.sleep(0.1)
         except Exception as e:
             logger.debug(f"Input error: {e}")
         finally:
             event.set()
 
-    thread = threading.Thread(target=get_input)
-    thread.daemon = True
+    thread = threading.Thread(target=get_input, daemon=True)
     thread.start()
 
     # Wait for the event OR the timeout

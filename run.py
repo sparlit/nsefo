@@ -150,12 +150,12 @@ def verify_connectivity(cfg, interactive=True):
 
 
 def start_web_dashboard(bg=True):
-    """Launch FastAPI dashboard on port 9099. Pass bg=False to run in this process."""
-    logger.info("[INIT] Web Terminal on http://localhost:9099 ...")
+    """Launch FastAPI dashboard on port 8899. Pass bg=False to run in this process."""
+    logger.info("[INIT] Web Terminal on http://localhost:8899 ...")
     try:
         cmd = [sys.executable, "-m", "uvicorn",
                "dashboards.web.app:app",
-               "--host", "0.0.0.0", "--port", "9099"]
+               "--host", "0.0.0.0", "--port", "8899"]
         if bg:
             subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                             cwd=PROJECT_ROOT)
@@ -191,20 +191,6 @@ def run_setup_wizard():
         sys.exit(1)
 
 
-def run_nlp_command(cmd_text):
-    """Execute a single NLP trading command and exit."""
-    logger.info("NLP mode: %s", cmd_text)
-    try:
-        from python_app.main import TradingApp
-        app = TradingApp()
-        result = app.handle_manual_suggestion(cmd_text)
-        print("\n[RESULT]")
-        print(json.dumps(result, indent=2))
-    except Exception as e:
-        logger.error("NLP command failed: %s", e)
-        sys.exit(1)
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # MAIN
 # ─────────────────────────────────────────────────────────────────────────────
@@ -220,10 +206,6 @@ def main():
     args = sys.argv[1:]
     run_setup = "--setup" in args
     non_interactive = "--non-interactive" in args or "-y" in args
-    nlp_cmd = None
-    if args and not run_setup and not non_interactive and not args[0].startswith("-"):
-        nlp_cmd = " ".join(args)
-
     # Core setup — always runs
     ensure_pyi3_core()
     cfg = load_config()
@@ -236,21 +218,12 @@ def main():
         if not verify_connectivity(cfg, interactive=True):
             logger.warning("Proceeding anyway (--non-interactive not set).")
 
-    # ── Three modes ────────────────────────────────────────────────────────
+    # ── Full application (GUI + trading engine) ─────────────────────────────
 
-    if nlp_cmd:
-        # Mode A: single NLP command, then exit
-        print("\n" + "=" * 52)
-        print("  NLP COMMAND MODE")
-        print("=" * 52 + "\n")
-        run_nlp_command(nlp_cmd)
-
-    else:
-        # Mode B: full application (GUI + trading engine)
-        print("\n" + "=" * 52)
-        print("  MASTER PRO IS LIVE")
+    print("\n" + "=" * 52)
+    print("  MASTER PRO IS LIVE")
         print("=" * 52)
-        print(f"  Web Console  : http://localhost:9099")
+        print(f"  Web Console  : http://localhost:8899")
         print(f"  Trading Mode: {cfg.get('mode', 'paper').upper()}")
         print(f"  Capital     : \u20b9{cfg['risk']['capital']:,.0f}")
         print(f"  Broker      : {cfg.get('provider', 'dhan').upper()}")

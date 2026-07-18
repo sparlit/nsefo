@@ -186,6 +186,12 @@ class Coordinator:
                         symbol=symbol, side=side, price=price, qty=qty,
                     )
 
+                if result.get("status") == "ERROR":
+                    raise OrderError(
+                        f"Order failed: {result.get('message', 'broker returned empty order_id')}",
+                        symbol=symbol, side=side, price=price, qty=qty,
+                    )
+
                 order_info = {
                     "order_id": order_id,
                     "symbol": symbol,
@@ -246,7 +252,7 @@ class Coordinator:
                     if monitor_func:
                         market_price = monitor_func(symbol)
                     else:
-                        ltp_data = self.broker.get_market_data(symbol)
+                        ltp_data = self.broker.get_market_data([{"security_id": symbol, "exchange_segment": "NSE_FNO"}])
                         market_price = ltp_data.get(symbol, {}).get("last_price", 0)
 
                     if not market_price:
@@ -261,24 +267,30 @@ class Coordinator:
                         )
                         if not ti:
                             continue  # Already closed
+                        # Extract data under lock to avoid use-after-free
+                        trade_price = ti["price"]
+                        trade_side = ti["side"]
+                        trade_sl = ti.get("stop_loss")
+                        trade_target = ti.get("target")
+                    # Lock released — trade_data is now in local variables
 
                     # ── Trailing stop update ─────────────────────────────────
-                    if ti.get("stop_loss"):
-                        sl = ti["stop_loss"]
+                    if trade_sl:
                         ts_pct = 0.005
-                        ts = TrailingStop(entry_price=ti["price"], side=ti["side"], initial_sl=sl, trailing_pct=ts_pct)
+                        ts = TrailingStop(entry_price=trade_price, side=trade_side, initial_sl=trade_sl, trailing_pct=ts_pct)
                         ts.update(market_price)
-                        ti["trailing_stop"] = ts.stop_price
+                        with global_state._lock:
+                            ti["trailing_stop"] = ts.stop_price
 
                     # ── Check stop-hit ─────────────────────────────────────
-                    if side == "BUY" and market_price <= ti["stop_loss"]:
+                    if trade_side == "BUY" and market_price <= trade_sl:
                         self._close_trade(order_id, "STOPPED_OUT", market_price)
-                    elif side == "SELL" and market_price >= ti["stop_loss"]:
+                    elif trade_side == "SELL" and market_price >= trade_sl:
                         self._close_trade(order_id, "STOPPED_OUT", market_price)
                     # ── Check target-hit ────────────────────────────────────
-                    elif side == "BUY" and market_price >= ti["target"]:
+                    elif trade_side == "BUY" and market_price >= trade_target:
                         self._close_trade(order_id, "TARGET_HIT", market_price)
-                    elif side == "SELL" and market_price <= ti["target"]:
+                    elif trade_side == "SELL" and market_price <= trade_target:
                         self._close_trade(order_id, "TARGET_HIT", market_price)
 
                 except Exception as e:

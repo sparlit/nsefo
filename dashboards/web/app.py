@@ -16,7 +16,7 @@ from python_app.broker_integration.api import router as broker_api
 _BASE_DIR = Path(__file__).parent.parent
 _STATIC_DIR = _BASE_DIR / "web" / "static"
 
-app = FastAPI()
+app = FastAPI(docs_url=None, redoc_url=None)
 
 # ── In-memory rate limiting (broker API only — per-IP sliding window) ────────
 # 60 req/min per IP — reject with 429 if exceeded.
@@ -26,21 +26,26 @@ _rate_limit_max = 60
 _rate_limit_store: Dict[str, List[float]] = {}
 
 
-def _rate_limit_ip(request: Request) -> str:
-    """Extract client IP from X-Forwarded-For or direct client host."""
-    fwd = request.headers.get("x-forwarded-for", "").split(",")[0].strip()
-    return fwd or (request.client.host if request.client else "unknown")
-
-
 @app.middleware("http")
 async def _broker_rate_limit_middleware(request: Request, call_next):
-    """Apply rate limiting only to /api/* broker routes."""
-    if request.url.path.startswith("/api"):
-        client_ip = _rate_limit_ip(request)
+    """Apply rate limiting to /api/* routes and /ws."""
+    # Only trust X-Forwarded-For when client is from a known proxy (localhost / RFC 1918).
+    # Otherwise use direct client host to prevent spoofing.
+    client_host = request.client.host if request.client else "unknown"
+    is_trusted_proxy = client_host in ("127.0.0.1", "::1", "localhost") or _is_private_ip(client_host)
+    if is_trusted_proxy and "x-forwarded-for" in request.headers:
+        client_ip = request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+    else:
+        client_ip = client_host
+
+    if request.url.path.startswith("/api") or request.url.path == "/ws":
         now = time.monotonic()
         ts = _rate_limit_store.get(client_ip, [])
         ts = [t for t in ts if (now - t) < _rate_limit_window]
-        _rate_limit_store[client_ip] = ts
+        if ts:
+            _rate_limit_store[client_ip] = ts
+        else:
+            _rate_limit_store.pop(client_ip, None)  # Remove empty entry to prevent unbounded growth
         if len(ts) >= _rate_limit_max:
             retry_after = int(_rate_limit_window - (now - ts[0])) + 1
             return JSONResponse(
@@ -51,6 +56,15 @@ async def _broker_rate_limit_middleware(request: Request, call_next):
         ts.append(now)
         _rate_limit_store[client_ip] = ts
     return await call_next(request)
+
+
+def _is_private_ip(host: str) -> bool:
+    """Return True if host is a private/RFC 1918 address."""
+    try:
+        import ipaddress
+        return ipaddress.ip_address(host).is_private
+    except Exception:
+        return False
 
 # Lazy init — TradingApp() triggers broker login, defer until first request
 _trade_engine = None
@@ -205,7 +219,7 @@ async def test_connection(_: str = Depends(verify_dashboard_secret)):
         else:
             return {"login_ok": False, "error": "Login returned False — check credentials"}
     except Exception as e:
-        return {"login_ok": False, "error": str(e)}
+        return {"login_ok": False, "error": "connection test failed — check logs"}
 
 
 @app.post("/config/test-connection")
@@ -238,9 +252,9 @@ async def test_connection_with_credentials(
         else:
             return {"login_ok": False, "error": "Login returned False — check credentials and try again"}
     except ValueError as e:
-        return {"login_ok": False, "error": str(e)}
+        return {"login_ok": False, "error": f"invalid value: {e.args[0] if e.args else 'check input format'}"}
     except Exception as e:
-        return {"login_ok": False, "error": str(e)}
+        return {"login_ok": False, "error": "connection test failed — check broker credentials and try again"}
 
 
 @app.get("/mode")
@@ -261,7 +275,7 @@ async def get_mode(_: str = Depends(verify_dashboard_secret)):
         sm.get_broker()  # triggers the live→paper fallback detection
         return JSONResponse(content=sm.get_actual_mode())
     except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return JSONResponse({"error": "internal server error — check logs for details"}, status_code=500)
 
 
 @app.websocket("/ws")
