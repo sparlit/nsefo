@@ -219,10 +219,10 @@ class PaytmMoneyProvider(Broker):
             self.logger.error(f"PaytmMoney Historical Data Error: {e}")
             return []
 
-    def place_order(self, order_details: Dict[str, Any]) -> str:
-        """Place a new order."""
+    def place_order(self, order_details: Dict[str, Any]) -> Dict[str, Any]:
+        """Place a new order. Returns {"order_id": str, "status": str, "message": str}."""
         if not self.authenticated:
-            return ""
+            return {"order_id": "", "status": "ERROR", "message": "Not authenticated"}
         try:
             url = f"{self.BASE_URL}/v1/orders"
             payload = {
@@ -262,16 +262,16 @@ class PaytmMoneyProvider(Broker):
                 if data.get("status") in ("success", "200", 200):
                     order_id = data.get("data", {}).get("order_id", "")
                     if order_id:
-                        return str(order_id)
-                self.logger.warning(f"PaytmMoney Order Rejected: {data.get(' remarks') or data.get('message')}")
-            return ""
+                        return {"order_id": str(order_id), "status": "OPEN", "message": ""}
+                return {"order_id": "", "status": "REJECTED", "message": data.get(' remarks') or data.get('message') or "Order rejected"}
+            return {"order_id": "", "status": "REJECTED", "message": f"HTTP {response.status_code}"}
 
         except ImportError:
             self.logger.error("PaytmMoney: httpx or requests not available")
-            return ""
+            return {"order_id": "", "status": "ERROR", "message": "httpx/requests not available"}
         except Exception as e:
             self.logger.error(f"PaytmMoney Order Error: {e}")
-            return ""
+            return {"order_id": "", "status": "ERROR", "message": str(e)}
 
     def get_order_status(self, order_id: str) -> Dict[str, Any]:
         """Get order status by order ID."""

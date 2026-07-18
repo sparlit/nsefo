@@ -139,10 +139,10 @@ class SharekhanProvider(Broker):
             self.logger.error(f"Sharekhan Historical Data Error: {e}")
             return []
 
-    def place_order(self, order_details: Dict[str, Any]) -> str:
-        """POST /v1/orders"""
+    def place_order(self, order_details: Dict[str, Any]) -> Dict[str, Any]:
+        """POST /v1/orders. Returns {"order_id": str, "status": str, "message": str}."""
         if not self.authenticated or httpx is None:
-            return ""
+            return {"order_id": "", "status": "ERROR", "message": "Not authenticated"}
         try:
             exchange = order_details.get("exchange_segment", "NSE").upper()
             sid = order_details.get("security_id", "")
@@ -150,7 +150,7 @@ class SharekhanProvider(Broker):
                 "exchange": exchange,
                 "script": sid,
                 "qty": order_details.get("quantity", 0),
-                "type": order_details.get("order_type", 2),  # 2 = MARKET
+                "type": order_details.get("order_type", 2),
                 "side": 1 if order_details.get("side", "BUY") == "BUY" else -1,
                 "product_type": order_details.get("product_type", "MARGIN"),
                 "price": order_details.get("price", 0),
@@ -163,10 +163,10 @@ class SharekhanProvider(Broker):
             order_id = ""
             if isinstance(data, dict):
                 order_id = data.get("order_id") or data.get("data", {}).get("order_id", "")
-            return str(order_id)
+            return {"order_id": str(order_id), "status": "OPEN" if order_id else "ERROR", "message": "" if order_id else "No order_id returned"}
         except Exception as e:
             self.logger.error(f"Sharekhan Place Order Error: {e}")
-            return ""
+            return {"order_id": "", "status": "ERROR", "message": str(e)}
 
     def get_order_status(self, order_id: str) -> Dict[str, Any]:
         """GET /v1/orders/{order_id}"""

@@ -115,12 +115,12 @@ class HDFCSecuritiesProvider(Broker):
             self.logger.error(f"HDFC Securities Historical Data Error: {e}")
             return []
 
-    def place_order(self, order_details: Dict[str, Any]) -> str:
-        """Place a new order."""
+    def place_order(self, order_details: Dict[str, Any]) -> Dict[str, Any]:
+        """Place a new order. Returns {"order_id": str, "status": str, "message": str}."""
         if not self._authenticated:
-            return ""
+            return {"order_id": "", "status": "ERROR", "message": "Not authenticated"}
         if httpx is None:
-            return ""
+            return {"order_id": "", "status": "ERROR", "message": "httpx not available"}
         try:
             url = f"{self.BASE_URL}/api/orders"
             payload = {
@@ -136,12 +136,12 @@ class HDFCSecuritiesProvider(Broker):
             response = self._get_client().post(url, json=payload, headers=self._get_headers(), timeout=10)
             if response.status_code == 200:
                 data = response.json()
-                return str(data.get('order_id', ''))
-            self.logger.warning(f"HDFC Securities Order Rejected: {response.text}")
-            return ""
+                oid = str(data.get('order_id', ''))
+                return {"order_id": oid, "status": "OPEN", "message": ""}
+            return {"order_id": "", "status": "REJECTED", "message": f"HTTP {response.status_code}: {response.text[:80]}"}
         except Exception as e:
             self.logger.error(f"HDFC Securities Order Error: {e}")
-            return ""
+            return {"order_id": "", "status": "ERROR", "message": str(e)}
 
     def get_order_status(self, order_id: str) -> Dict[str, Any]:
         """Get order status by order ID."""

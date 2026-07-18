@@ -20,13 +20,15 @@ class DhanProvider(Broker):
             return False
 
     def get_market_data(self, symbols: List[Dict[str, str]]) -> Dict[str, Any]:
+        if not self.client_id or not self.access_token:
+            return {}
         try:
             # Dhan quote_data usually expects a list of dictionaries with 'amc' and 'sid' or similar
             # Re-mapping to ensure compatibility
             return self.dhan.quote_data(symbols)
         except Exception as e:
             self.logger.error(f"Market Data Error: {e}")
-            return {"status": "error", "remarks": str(e)}
+            return {}
 
     def get_historical_data(self, symbol: Dict[str, str], interval: str, from_date: str, to_date: str) -> Any:
         try:
@@ -41,7 +43,8 @@ class DhanProvider(Broker):
             self.logger.error(f"Historical Data Error: {e}")
             return []
 
-    def place_order(self, o: Dict[str, Any]) -> str:
+    def place_order(self, o: Dict[str, Any]) -> Dict[str, Any]:
+        """Place a new order. Returns {"order_id": str, "status": str, "message": str}."""
         try:
             response = self.dhan.place_order(
                 tag=o.get('tag', 'NSEFO_PRO'),
@@ -56,13 +59,13 @@ class DhanProvider(Broker):
                 trigger_price=float(o.get('trigger_price', 0))
             )
             if response.get('status') == 'success':
-                return response['data']['orderId']
+                return {"order_id": response['data']['orderId'], "status": "OPEN", "message": ""}
             else:
                 self.logger.warning(f"Order Rejected: {response.get('remarks')}")
-                return ""
+                return {"order_id": "", "status": "REJECTED", "message": response.get('remarks', 'Dhan rejected order')}
         except Exception as e:
             self.logger.error(f"Order failure: {e}")
-            return ""
+            return {"order_id": "", "status": "ERROR", "message": str(e)}
 
     def get_order_status(self, order_id: str) -> Dict[str, Any]:
         return self.dhan.get_order_by_id(order_id)
@@ -74,6 +77,21 @@ class DhanProvider(Broker):
     def get_holdings(self) -> List[Dict[str, Any]]:
         resp = self.dhan.get_holdings()
         return resp.get('data', []) if resp.get('status') == 'success' else []
+
+    def get_fund_limits(self) -> Dict[str, float]:
+        try:
+            resp = self.dhan.get_fund_limits()
+            if resp.get('status') == 'success':
+                data = resp.get('data', {})
+                # Dhan returns: { 'availabeBalance': float, 'marginUsed': float, ... }
+                return {
+                    "available_cash": float(data.get('availabeBalance', 0.0)),
+                    "used_margin":    float(data.get('marginUsed', 0.0)),
+                    "total":          float(data.get('availabeBalance', 0.0)) + float(data.get('marginUsed', 0.0)),
+                }
+        except Exception as e:
+            self.logger.error(f"get_fund_limits error: {e}")
+        return {"available_cash": 0.0, "used_margin": 0.0, "total": 0.0}
 
     def cancel_order(self, order_id: str) -> bool:
         resp = self.dhan.cancel_order(order_id)

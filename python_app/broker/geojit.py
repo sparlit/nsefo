@@ -138,10 +138,10 @@ class GeojitProvider(Broker):
             self.logger.error(f"Geojit Historical Data Error: {e}")
             return []
 
-    def place_order(self, order_details: Dict[str, Any]) -> str:
-        """POST /v1/orders"""
+    def place_order(self, order_details: Dict[str, Any]) -> Dict[str, Any]:
+        """POST /v1/orders. Returns {"order_id": str, "status": str, "message": str}."""
         if not self.authenticated or httpx is None:
-            return ""
+            return {"order_id": "", "status": "ERROR", "message": "Not authenticated or httpx unavailable"}
         try:
             exch = order_details.get("exchange_segment", "NSE").upper()
             sid = order_details.get("security_id", "")
@@ -149,7 +149,7 @@ class GeojitProvider(Broker):
                 "exchange": exch,
                 "symbol": sid,
                 "qty": order_details.get("quantity", 0),
-                "type": order_details.get("order_type", 2),  # 2 = MARKET
+                "type": order_details.get("order_type", 2),
                 "side": 1 if order_details.get("side", "BUY") == "BUY" else -1,
                 "product_type": order_details.get("product_type", "MARGIN"),
                 "price": order_details.get("price", 0),
@@ -159,14 +159,13 @@ class GeojitProvider(Broker):
             resp = client.post("/v1/orders", json=payload, headers=self._headers)
             resp.raise_for_status()
             data = resp.json()
-            # Return order ID — adapt based on actual Geojit response shape
             order_id = ""
             if isinstance(data, dict):
-                order_id = data.get("order_id") or data.get("data", {}).get("order_id", "")
-            return str(order_id)
+                order_id = str(data.get("order_id") or data.get("data", {}).get("order_id", ""))
+            return {"order_id": order_id, "status": "OPEN" if order_id else "ERROR", "message": "" if order_id else "No order_id in Geojit response"}
         except Exception as e:
             self.logger.error(f"Geojit Place Order Error: {e}")
-            return ""
+            return {"order_id": "", "status": "ERROR", "message": str(e)}
 
     def get_order_status(self, order_id: str) -> Dict[str, Any]:
         """GET /v1/orders/{order_id}"""

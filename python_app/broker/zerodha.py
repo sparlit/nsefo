@@ -95,19 +95,20 @@ class ZerodhaProvider(Broker):
             self.logger.error(f"Zerodha Historical Error: {e}")
             return []
 
-    def place_order(self, o: Dict[str, Any]) -> str:
+    def place_order(self, o: Dict[str, Any]) -> Dict[str, Any]:
         """
         order_details keys: exchange_segment (NFO/BFO), security_id (tradingsymbol),
                              side (BUY/SELL), quantity, order_type, price, product_type
+        Returns: {"order_id": str, "status": "OPEN"|"REJECTED"|"ERROR", "message": str}
         """
         if not self.kite:
-            return ""
+            return {"order_id": "", "status": "ERROR", "message": "Kite session not initialized"}
         try:
             exchange = o.get("exchange_segment", "NFO")
             tradingsymbol = o.get("security_id")
             transaction_type = o.get("side", "BUY").upper()
             order_type = o.get("order_type", "MARKET")
-            product = o.get("product_type", "D")  # D=Delivery, M=Margin, I=Intraday
+            product = o.get("product_type", "D")
 
             response = self.kite.place_order(
                 exchange=exchange,
@@ -120,11 +121,12 @@ class ZerodhaProvider(Broker):
                 product=product
             )
             if response and response.get("status") == "success":
-                return str(response.get("data", {}).get("order_id", ""))
-            return ""
+                order_id = str(response.get("data", {}).get("order_id", ""))
+                return {"order_id": order_id, "status": "OPEN", "message": ""}
+            return {"order_id": "", "status": "ERROR", "message": "Kite place_order returned no success status"}
         except Exception as e:
             self.logger.error(f"Zerodha Order Error: {e}")
-            return ""
+            return {"order_id": "", "status": "ERROR", "message": str(e)}
 
     def get_order_status(self, order_id: str) -> Dict[str, Any]:
         if not self.kite:

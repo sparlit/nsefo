@@ -103,7 +103,7 @@ class BajajFinancialProvider(Broker):
             self.logger.error(f"Bajaj Historical Data Error: {e}")
             return []
 
-    def place_order(self, order_details: Dict[str, Any]) -> str:
+    def place_order(self, order_details: Dict[str, Any]) -> Dict[str, Any]:
         try:
             client = self._get_client()
             payload = {
@@ -118,12 +118,12 @@ class BajajFinancialProvider(Broker):
             response = client.post("/api/v1/orders", json=payload)
             if response.status_code in (200, 201):
                 data = response.json()
-                return str(data.get("order_id", ""))
-            self.logger.error(f"Bajaj Order Failed: {response.status_code} {response.text}")
-            return ""
+                oid = str(data.get("order_id", ""))
+                return {"order_id": oid, "status": "OPEN", "message": ""}
+            return {"order_id": "", "status": "REJECTED", "message": f"HTTP {response.status_code}"}
         except Exception as e:
             self.logger.error(f"Bajaj Order Error: {e}")
-            return ""
+            return {"order_id": "", "status": "ERROR", "message": str(e)}
 
     def get_order_status(self, order_id: str) -> Dict[str, Any]:
         try:

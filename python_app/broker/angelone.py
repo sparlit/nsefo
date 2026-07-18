@@ -120,10 +120,10 @@ class AngelOneProvider(Broker):
             self.logger.error(f"AngelOne Historical Data Error: {e}")
             return []
 
-    def place_order(self, order_details: Dict[str, Any]) -> str:
-        """Place a new order."""
+    def place_order(self, order_details: Dict[str, Any]) -> Dict[str, Any]:
+        """Place a new order. Returns {"order_id": str, "status": str, "message": str}."""
         if not self.authenticated:
-            return ""
+            return {"order_id": "", "status": "ERROR", "message": "Not authenticated"}
         try:
             url = f"{self.BASE_URL}/smartapi/placeorder"
             payload = {
@@ -144,13 +144,12 @@ class AngelOneProvider(Broker):
             if response.status_code == 200:
                 data = response.json()
                 if data.get('status'):
-                    return str(data.get('data', {}).get('orderid', ''))
-                else:
-                    self.logger.warning(f"AngelOne Order Rejected: {data.get('message')}")
-            return ""
+                    return {"order_id": str(data.get('data', {}).get('orderid', '')), "status": "OPEN", "message": ""}
+                return {"order_id": "", "status": "REJECTED", "message": data.get('message', 'Order rejected')}
+            return {"order_id": "", "status": "ERROR", "message": f"HTTP {response.status_code}"}
         except Exception as e:
             self.logger.error(f"AngelOne Order Error: {e}")
-            return ""
+            return {"order_id": "", "status": "ERROR", "message": str(e)}
 
     def get_order_status(self, order_id: str) -> Dict[str, Any]:
         """Get order status by order ID."""

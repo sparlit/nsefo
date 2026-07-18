@@ -140,9 +140,9 @@ class IIFLProvider(Broker):
             self.logger.error(f"IIFL Historical Data Error: {e}")
             return []
 
-    def place_order(self, order_details: Dict[str, Any]) -> str:
+    def place_order(self, order_details: Dict[str, Any]) -> Dict[str, Any]:
         if not self.authenticated:
-            return ""
+            return {"order_id": "", "status": "ERROR", "message": "Not authenticated"}
         try:
             payload = {
                 "clientId": self.client_id,
@@ -165,11 +165,11 @@ class IIFLProvider(Broker):
             resp.raise_for_status()
             data = resp.json()
             if data.get("orderId"):
-                return str(data["orderId"])
-            return ""
+                return {"order_id": str(data["orderId"]), "status": "OPEN", "message": ""}
+            return {"order_id": "", "status": "REJECTED", "message": "No orderId in IIFL response"}
         except Exception as e:
             self.logger.error(f"IIFL Place Order Error: {e}")
-            return ""
+            return {"order_id": "", "status": "ERROR", "message": str(e)}
 
     def get_order_status(self, order_id: str) -> Dict[str, Any]:
         if not self.authenticated:

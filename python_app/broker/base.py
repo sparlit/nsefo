@@ -88,10 +88,16 @@ class Broker(ABC):
         __is_abstract__ = True
         raise NotImplementedError
 
-    @mark_abstract
-    @abstractmethod
-    def place_order(self, order_details: Dict[str, Any]) -> str:
-        __is_abstract__ = True
+    def place_order(self, order_details: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Place an order. Subclasses must override.
+
+        Returns dict:
+            {"order_id": str, "status": "OPEN"|"REJECTED"|"ERROR", "message": str}
+
+        Empty string "" is accepted for backwards compatibility but normalised
+        by the caller (coordinator) into {"order_id": "", "status": "ERROR", "message": ...}.
+        """
         raise NotImplementedError
 
     @mark_abstract

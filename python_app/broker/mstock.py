@@ -178,11 +178,11 @@ class MStockProvider(Broker):
             self.logger.error("mStock historical data error: %s", e)
             return []
 
-    def place_order(self, order_details: Dict[str, Any]) -> str:
-        """Place a F&O or equity order. Returns order_id on success, empty string on failure."""
+    def place_order(self, order_details: Dict[str, Any]) -> Dict[str, Any]:
+        """Place a new order. Returns {"order_id": str, "status": str, "message": str}."""
         if not _HAS_HTTPX:
             self.logger.error("httpx not installed")
-            return ""
+            return {"order_id": "", "status": "ERROR", "message": "httpx not available"}
         try:
             payload = {
                 "exchange": order_details.get("exchange_segment", "NSE"),
@@ -197,7 +197,7 @@ class MStockProvider(Broker):
             if resp.status_code == 401:
                 self._handle_auth_error(401)
                 self.logger.warning("mStock order rejected — token may be expired.")
-                return ""
+                return {"order_id": "", "status": "REJECTED", "message": "Token expired"}
             resp.raise_for_status()
             data = resp.json()
             if data.get("status", "").lower() == "success" or data.get("status_code") == 200:
@@ -206,18 +206,18 @@ class MStockProvider(Broker):
                     or data.get("order_id")
                     or data.get("data", {}).get("NSE", {}).get("order_id", "")
                 )
-                return str(order_id) if order_id else ""
+                return {"order_id": str(order_id) if order_id else "", "status": "OPEN" if order_id else "ERROR", "message": "" if order_id else "No order_id in mStock response"}
             remarks = data.get("remarks", data.get("message", "Order rejected"))
             self.logger.warning("mStock order rejected: %s", remarks)
-            return ""
+            return {"order_id": "", "status": "REJECTED", "message": str(remarks)}
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 401:
                 self._handle_auth_error(401)
             self.logger.error("mStock order HTTP error: %s", e)
-            return ""
+            return {"order_id": "", "status": "ERROR", "message": f"HTTP {e.response.status_code}"}
         except Exception as e:
             self.logger.error("mStock place_order error: %s", e)
-            return ""
+            return {"order_id": "", "status": "ERROR", "message": str(e)}
 
     def get_order_status(self, order_id: str) -> Dict[str, Any]:
         """Get status of a placed order."""

@@ -154,10 +154,10 @@ class EdelweissProvider(Broker):
             self.logger.error(f"Edelweiss historical data error: {e}")
             return []
 
-    def place_order(self, order_details: Dict[str, Any]) -> str:
-        """POST /api/v1/orders — places a new order, returns order_id string."""
+    def place_order(self, order_details: Dict[str, Any]) -> Dict[str, Any]:
+        """POST /api/v1/orders. Returns {"order_id": str, "status": str, "message": str}."""
         if not self.authenticated or httpx is None:
-            return ""
+            return {"order_id": "", "status": "ERROR", "message": str(e)}
         try:
             payload = {
                 "exchange": order_details.get("exchange", "NSE"),
@@ -177,16 +177,12 @@ class EdelweissProvider(Broker):
             )
             if resp.status_code in (200, 201):
                 data = resp.json()
-                return str(
-                    data.get("data", {}).get("order_id")
-                    or data.get("order_id")
-                    or ""
-                )
-            self.logger.warning(f"Edelweiss order failed: {resp.status_code} {resp.text[:200]}")
-            return ""
+                return {"order_id": oid, "status": "OPEN" if oid else "ERROR", "message": "" if oid else "No order_id in response"}
+            self.logger.warning(f"Edelweiss order failed: {resp.status_code}")
+            return {"order_id": "", "status": "REJECTED", "message": f"HTTP {resp.status_code}"}
         except Exception as e:
             self.logger.error(f"Edelweiss place_order error: {e}")
-            return ""
+            return {"order_id": "", "status": "ERROR", "message": str(e)}
 
     def get_order_status(self, order_id: str) -> Dict[str, Any]:
         """GET /api/v1/orders/{order_id} — returns order details dict."""

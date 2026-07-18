@@ -67,13 +67,18 @@ _SENSITIVE_CONFIG_KEYS = frozenset({
     "yob",
 })
 
-# ── Fields that can be updated via POST /config (non-sensitive only) ──────────
+# ── Fields that can be updated via POST /config ─────────────────────────────────
+# NOTE: Sensitive fields (password, api_key, access_token, totp_secret, etc.)
+# are NEVER configurable via the API — they must be set via environment variables.
+# Attempting to set them via POST is silently ignored (see update_config below).
 _CONFIGURABLE_VIA_API = frozenset({
     "mode",
     "provider",
     "target_frequency",
     "data_provider",
     "risk",
+    "client_id",       # non-sensitive display name, stored in config.json
+    "yob",             # non-sensitive demographic, stored in config.json
 })
 
 
@@ -203,6 +208,41 @@ async def test_connection(_: str = Depends(verify_dashboard_secret)):
         return {"login_ok": False, "error": str(e)}
 
 
+@app.post("/config/test-connection")
+async def test_connection_with_credentials(
+    request: Request,
+    _: str = Depends(verify_dashboard_secret),
+):
+    """
+    Test broker login with credentials provided in the request body.
+    Credentials are NOT persisted — this is a pure test.
+
+    Body: {provider, client_id, access_token, api_key, password, totp_secret, yob, ...}
+    Response: {login_ok, error?}
+    """
+    raw = await request.json()
+    provider = raw.pop("provider", None)
+    if not provider:
+        return JSONResponse({"login_ok": False, "error": "provider is required"}, status_code=400)
+
+    # Strip empty strings so BrokerFactory gets None for missing fields
+    credentials = {k: (v if v not in ("", None) else None) for k, v in raw.items()}
+
+    try:
+        from python_app.broker_integration.factory import BrokerFactory
+
+        broker = BrokerFactory.create(provider, **credentials)
+        ok = broker.login() if broker else False
+        if ok:
+            return {"login_ok": True}
+        else:
+            return {"login_ok": False, "error": "Login returned False — check credentials and try again"}
+    except ValueError as e:
+        return {"login_ok": False, "error": str(e)}
+    except Exception as e:
+        return {"login_ok": False, "error": str(e)}
+
+
 @app.get("/mode")
 async def get_mode(_: str = Depends(verify_dashboard_secret)):
     """
@@ -304,4 +344,4 @@ app.include_router(broker_api)
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=9099)
+    uvicorn.run(app, host="0.0.0.0", port=8899)

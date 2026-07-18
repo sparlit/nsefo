@@ -41,13 +41,12 @@ class PaperBroker(Broker):
                 self.logger.debug(f"Historical data unavailable for paper: {e}")
         return []
 
-    def place_order(self, o: Dict[str, Any]) -> str:
+    def place_order(self, o: Dict[str, Any]) -> Dict[str, Any]:
         order_id = f"PAPER-{uuid.uuid4().hex[:8].upper()}"
         o['order_id'] = order_id
         o['status'] = 'EXECUTED'
         o['order_time'] = str(datetime.now())
         self.orders[order_id] = o
-
         self.positions.append({
             "symbol": o['symbol'],
             "quantity": o['quantity'],
@@ -57,7 +56,7 @@ class PaperBroker(Broker):
             "exchange_segment": o.get('exchange_segment', 'NSE_FNO')
         })
         self.logger.info(f"PAPER EXECUTION: {order_id} | {o['symbol']} {o['side']} @ {o['price']}")
-        return order_id
+        return {"order_id": order_id, "status": "OPEN", "message": ""}
 
     def get_order_status(self, order_id: str) -> Dict[str, Any]:
         return self.orders.get(order_id, {"status": "NOT_FOUND"})

@@ -1,12 +1,18 @@
 {
-    "mode": "live",
-    "client_id": "1100625529",
-    "access_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJkaGFuIiwicGFydG5lcklkIjoiIiwiZXhwIjoxNzgzNjIwMDYzLCJpYXQiOjE3ODM1MzM2NjMsInRva2VuQ29uc3VtZXJUeXBlIjoiU0VMRiIsIndlYmhvb2tVcmwiOiIiLCJkaGFuQ2xpZW50SWQiOiIxMTAwNjI1NTI5In0.YoUmvceV94RSkglVGDTyvfDC2Xc2Ga7GznNhVFZ8pi7wiLZwVKzlhMfzJFCIQ_ZklomO4laT_732n33eOZ2Otg",
-    "totp_secret": "",
-    "risk": {
-        "max_risk_per_trade_percent": 1.0,
-        "daily_max_loss": 5000.0,
-        "capital": 1000000.0,
-        "fixed_lots": 1
-    }
+  "mode": "paper",
+  "client_id": "",
+  "access_token": "",
+  "totp_secret": "",
+  "provider": "",
+  "api_key": "",
+  "refresh_token": "",
+  "client_secret": "",
+  "target_frequency": "scalping",
+  "data_provider": "broker key",
+  "risk": {
+    "capital": 1000000.0,
+    "fixed_lots": 1,
+    "max_risk_per_trade_percent": 1,
+    "daily_max_loss": 5000
+  }
 }

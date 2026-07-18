@@ -166,7 +166,19 @@ class Coordinator:
 
             try:
                 result = self.broker.place_order(order_payload)
-                order_id = result.get("order_id", f"{base_key}_a{attempt}")
+
+                # Normalise: all brokers return Dict[str,Any]; guard against
+                # subclasses still returning str (backwards compat shim).
+                if isinstance(result, str):
+                    # String return means order_id or "" — treat as OPEN or ERROR.
+                    oid = result.strip() if result else ""
+                    result = {
+                        "order_id": oid,
+                        "status": "OPEN" if oid else "ERROR",
+                        "message": "" if oid else "Broker returned empty order_id",
+                    }
+
+                order_id = result.get("order_id", "") or f"{base_key}_a{attempt}"
 
                 if result.get("status") == "REJECTED":
                     raise OrderError(

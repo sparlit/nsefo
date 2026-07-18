@@ -114,16 +114,17 @@ class FyersProvider(Broker):
             self.logger.error(f"Fyers Historical Data Error: {e}")
             return []
 
-    def place_order(self, order_details: Dict[str, Any]) -> str:
+    def place_order(self, order_details: Dict[str, Any]) -> Dict[str, Any]:
+        """Returns {"order_id": str, "status": str, "message": str}."""
         if not self.authenticated:
-            return ""
+            return {"order_id": "", "status": "ERROR", "message": "Not authenticated"}
         try:
             exch = order_details.get("exchange_segment", "NSE_FNO").upper()
             sid = order_details.get("security_id", "")
             payload = {
                 "symbol": f"{exch}:{sid}",
                 "qty": order_details.get("quantity", 0),
-                "type": order_details.get("order_type", 2),  # 2= MARKET
+                "type": order_details.get("order_type", 2),
                 "side": 1 if order_details.get("side", "BUY") == "BUY" else -1,
                 "productType": order_details.get("product_type", "MARGIN"),
                 "limitPrice": order_details.get("price", 0),
@@ -138,11 +139,11 @@ class FyersProvider(Broker):
             resp.raise_for_status()
             data = resp.json()
             if data.get("s") == "ok" and data.get("data"):
-                return str(data["data"][0].get("orderId", ""))
-            return ""
+                return {"order_id": str(data["data"][0].get("orderId", "")), "status": "OPEN", "message": ""}
+            return {"order_id": "", "status": "REJECTED", "message": data.get("message", "Fyers rejected order")}
         except Exception as e:
             self.logger.error(f"Fyers Place Order Error: {e}")
-            return ""
+            return {"order_id": "", "status": "ERROR", "message": str(e)}
 
     def get_order_status(self, order_id: str) -> Dict[str, Any]:
         if not self.authenticated:

@@ -94,17 +94,18 @@ class UpstoxProvider(Broker):
             self.logger.error(f"Upstox Historical Error: {e}")
             return []
 
-    def place_order(self, o: Dict[str, Any]) -> str:
+    def place_order(self, o: Dict[str, Any]) -> Dict[str, Any]:
         """
         order_details keys: security_id, exchange_segment, side (BUY/SELL),
                              quantity, order_type, price (optional), trigger_price (optional)
+        Returns: {"order_id": str, "status": "OPEN"|"REJECTED"|"ERROR", "message": str}
         """
         if not self.api:
-            return ""
+            return {"order_id": "", "status": "ERROR", "message": "Upstox API not initialized"}
         try:
             exchange = o.get("exchange_segment", "NSE_FO")
             side = 1 if o.get("side", "BUY") == "BUY" else 2
-            order_type = o.get("order_type", "MARKET")  # MARKET, LIMIT
+            order_type = o.get("order_type", "MARKET")
             response = self.api.place_order(
                 exchange=exchange,
                 symbol=o.get("security_id"),
@@ -117,11 +118,11 @@ class UpstoxProvider(Broker):
                 validity="DAY"
             )
             if response and response.get("status") == "success":
-                return str(response.get("data", {}).get("order_id", ""))
-            return ""
+                return {"order_id": str(response.get("data", {}).get("order_id", "")), "status": "OPEN", "message": ""}
+            return {"order_id": "", "status": "ERROR", "message": "Upstox order failed"}
         except Exception as e:
             self.logger.error(f"Upstox Order Error: {e}")
-            return ""
+            return {"order_id": "", "status": "ERROR", "message": str(e)}
 
     def get_order_status(self, order_id: str) -> Dict[str, Any]:
         if not self.api:

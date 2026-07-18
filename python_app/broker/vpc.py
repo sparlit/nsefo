@@ -116,7 +116,8 @@ class VPCProvider(Broker):
             self.logger.error(f"VPC Historical Error: {e}")
             return []
 
-    def place_order(self, o: Dict[str, Any]) -> str:
+    def place_order(self, o: Dict[str, Any]) -> Dict[str, Any]:
+        """Place a new order. Returns {"order_id": str, "status": str, "message": str}."""
         try:
             payload = {
                 "exchange": o.get("exchange_segment", "NSE_FO"),
@@ -130,11 +131,11 @@ class VPCProvider(Broker):
             }
             resp = self._post("/v3/orders/place", payload)
             if resp and resp.get("status") == "success":
-                return str(resp.get("data", {}).get("order_id", ""))
-            return ""
+                return {"order_id": str(resp.get("data", {}).get("order_id", "")), "status": "OPEN", "message": ""}
+            return {"order_id": "", "status": "REJECTED", "message": "VPC order failed"}
         except Exception as e:
             self.logger.error(f"VPC Order Error: {e}")
-            return ""
+            return {"order_id": "", "status": "ERROR", "message": str(e)}
 
     def get_order_status(self, order_id: str) -> Dict[str, Any]:
         try:

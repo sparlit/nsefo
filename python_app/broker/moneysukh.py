@@ -161,14 +161,14 @@ class MoneysukhProvider(Broker):
             self.logger.error(f"Moneysukh historical error: {e}")
             return []
 
-    def place_order(self, order_details: Dict[str, Any]) -> str:
+    def place_order(self, order_details: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Place an order.
+        Place an order. Returns {"order_id": str, "status": str, "message": str}.
         order_details keys: exchange_segment, security_id, side, quantity,
                            order_type, price, trigger_price, product_type
         """
         if not self._authenticated:
-            return ""
+            return {"order_id": "", "status": "ERROR", "message": "Not authenticated"}
         try:
             payload = {
                 "exchange": order_details.get("exchange_segment", "NFO"),
@@ -190,16 +190,12 @@ class MoneysukhProvider(Broker):
             )
             if resp.status_code == 200:
                 data = resp.json()
-                return str(
-                    data.get("data", {}).get("order_id")
-                    or data.get("order_id")
-                    or data.get("NSE", {}).get("order_id", "")
-                )
-            self.logger.warning(f"Moneysukh order failed: {resp.status_code} {resp.text[:200]}")
-            return ""
+                return {"order_id": oid, "status": "OPEN" if oid else "REJECTED", "message": "" if oid else "No order_id in Moneysukh response"}
+            self.logger.warning(f"Moneysukh order failed: {resp.status_code}")
+            return {"order_id": "", "status": "REJECTED", "message": f"HTTP {resp.status_code}"}
         except Exception as e:
             self.logger.error(f"Moneysukh order error: {e}")
-            return ""
+            return {"order_id": "", "status": "ERROR", "message": str(e)}
 
     def get_order_status(self, order_id: str) -> Dict[str, Any]:
         if not self._authenticated:

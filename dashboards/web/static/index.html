@@ -5,449 +5,833 @@
     <title>NSEFO MASTER PRO - Expert Console</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        .kanban-col { min-height: 600px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; }
-        .card { background: white; border-radius: 6px; padding: 15px; margin-bottom: 12px; border-left: 4px solid #3b82f6; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-        .card-buy { border-left-color: #10b981; }
-        .card-sell { border-left-color: #ef4444; }
-        .tab-active { color: #3b82f6; border-bottom: 2px solid #3b82f6; }
+        body {
+            background: linear-gradient(135deg, #0f0c29 0%, #1a1a2e 40%, #16213e 100%);
+            min-height: 100vh;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+        }
+        .kanban-col {
+            min-height: 600px;
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 16px;
+            padding: 16px;
+            backdrop-filter: blur(8px);
+        }
+        .kanban-col h3 { color: rgba(255,255,255,0.7); }
+        #col-SCANNING { border-top: 3px solid #f59e0b; box-shadow: 0 0 20px rgba(245,158,11,0.15); }
+        #col-SIGNAL   { border-top: 3px solid #8b5cf6; box-shadow: 0 0 20px rgba(139,92,246,0.15); }
+        #col-ACTIVE    { border-top: 3px solid #06b6d4; box-shadow: 0 0 20px rgba(6,182,212,0.15); }
+        #col-CLOSED   { border-top: 3px solid #10b981; box-shadow: 0 0 20px rgba(16,185,129,0.15); }
+        .card {
+            background: rgba(255,255,255,0.08);
+            border-radius: 10px;
+            padding: 14px 14px 14px 18px;
+            margin-bottom: 10px;
+            border-left: 4px solid #6366f1;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            color: #e2e8f0;
+            transition: transform 0.15s, box-shadow 0.15s;
+        }
+        .card:hover { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(0,0,0,0.4); }
+        .card-buy  { border-left-color: #22c55e; background: rgba(34,197,94,0.1); }
+        .card-sell { border-left-color: #ef4444; background: rgba(239,68,68,0.1); }
+        .tab-active { color: #818cf8; border-bottom: 2px solid #818cf8; }
         .broker-field { display: none; }
+        .mode-badge {
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+            color: #fff;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+            text-shadow: 0 1px 3px rgba(0,0,0,0.4);
+        }
+        .nav-title {
+            background: linear-gradient(90deg, #60a5fa, #a78bfa, #f472b6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            font-size: 1.4rem;
+            font-weight: 900;
+            letter-spacing: -0.02em;
+        }
+        .stat-capital { color: #34d399; font-weight: 800; font-size: 1.1rem; }
+        .config-section {
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 16px;
+            overflow: hidden;
+        }
+        .config-header {
+            background: linear-gradient(135deg, #4f46e5, #7c3aed);
+            padding: 20px 28px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .config-body { padding: 28px; }
+        .form-label {
+            color: rgba(255,255,255,0.6);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            font-size: 0.7rem;
+            font-weight: 700;
+        }
+        .form-input, .form-select {
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.15);
+            color: #f1f5f9;
+            border-radius: 10px;
+            padding: 10px 14px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+            width: 100%;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .form-input:focus, .form-select:focus {
+            outline: none;
+            border-color: #818cf8;
+            box-shadow: 0 0 0 3px rgba(129,140,248,0.25);
+        }
+        .form-select option { background: #1e1b4b; color: #e2e8f0; }
+        .btn-primary {
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            color: white;
+            font-weight: 700;
+            padding: 12px 32px;
+            border-radius: 10px;
+            border: none;
+            cursor: pointer;
+            font-size: 0.9rem;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            transition: opacity 0.2s, transform 0.15s;
+            box-shadow: 0 4px 15px rgba(99,102,241,0.4);
+        }
+        .btn-primary:hover { opacity: 0.9; transform: translateY(-1px); }
+        .btn-primary:active { transform: translateY(0); }
+        .tab-btn {
+            color: rgba(255,255,255,0.5);
+            font-weight: 600;
+            font-size: 0.9rem;
+            transition: color 0.2s;
+            cursor: pointer;
+            background: none;
+            border: none;
+        }
+        .tab-btn:hover { color: rgba(255,255,255,0.85); }
+        .capital-label { color: rgba(255,255,255,0.4); font-size: 0.8rem; }
+        /* Env-var-only credential indicator */
+        .env-only-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 0.65rem;
+            color: #fbbf24;
+            background: rgba(251,191,36,0.1);
+            border: 1px solid rgba(251,191,36,0.25);
+            border-radius: 6px;
+            padding: 2px 7px;
+            margin-top: 4px;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+        }
+        .env-only-badge::before { content: '🔒'; }
+        /* Config sub-tabs */
+        .cfg-subtab {
+            display: flex;
+            gap: 2px;
+            margin-bottom: 24px;
+            background: rgba(255,255,255,0.06);
+            border-radius: 12px;
+            padding: 4px;
+        }
+        .cfg-subtab-btn {
+            flex: 1;
+            padding: 10px 20px;
+            border-radius: 9px;
+            border: none;
+            background: transparent;
+            color: rgba(255,255,255,0.5);
+            font-weight: 700;
+            font-size: 0.85rem;
+            letter-spacing: 0.05em;
+            cursor: pointer;
+            transition: background 0.2s, color 0.2s;
+        }
+        .cfg-subtab-btn.active {
+            background: rgba(99,102,241,0.6);
+            color: #fff;
+        }
+        .cfg-subtab-btn:hover:not(.active) { color: rgba(255,255,255,0.85); }
+        /* Inline risk validation error */
+        .risk-error {
+            color: #f87171;
+            font-size: 0.75rem;
+            margin-top: 4px;
+            font-weight: 600;
+        }
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 3px; }
     </style>
 </head>
-<body class="bg-slate-100 font-sans">
+<body>
 
     <!-- Navigation -->
-    <nav class="bg-slate-900 text-white p-5 flex justify-between shadow-xl">
+    <nav style="background: linear-gradient(135deg, #0f0c29, #1e1b4b, #312e81);" class="text-white p-5 flex justify-between shadow-2xl border-b border-indigo-500/30">
         <div class="flex items-center space-x-4">
-            <span class="text-2xl font-black tracking-tighter text-blue-400">NSEFO MASTER PRO</span>
-            <span id="status-mode" class="px-2 py-1 bg-blue-500/20 text-blue-400 text-xs rounded border border-blue-400/30 uppercase font-bold">PAPER MODE</span>
+            <span class="nav-title">NSEFO MASTER PRO</span>
+            <span id="status-mode" class="mode-badge text-xs px-3 py-1 rounded-full uppercase font-bold">PAPER MODE</span>
         </div>
         <div class="space-x-8 flex items-center font-medium">
-            <button onclick="showTab('terminal')" id="tab-terminal" class="hover:text-blue-400 transition border-b-2 border-transparent py-1">Terminal</button>
-            <button onclick="showTab('settings')" id="tab-settings" class="hover:text-blue-400 transition border-b-2 border-transparent py-1">Configuration</button>
-            <div class="pl-4 border-l border-slate-700">
-                <span class="text-slate-400 text-sm">Capital:</span>
-                <span id="stat-capital" class="text-emerald-400 font-bold">₹0.00</span>
+            <button onclick="showTab('terminal')" id="tab-terminal" class="tab-btn tab-active py-1">Terminal</button>
+            <button onclick="showTab('settings')" id="tab-settings" class="tab-btn py-1">Configuration</button>
+            <div class="pl-6 border-l border-indigo-500/40">
+                <span class="capital-label">Capital:</span>
+                <span id="stat-capital" class="stat-capital ml-2">₹0.00</span>
             </div>
         </div>
     </nav>
 
+    <!-- Mode warning banner — shown when live auth fails and paper fallback is active -->
+    <div id="mode-warning-banner" class="hidden" style="background:#92400e; color:#fef3c7; padding:10px 20px; text-align:center; font-size:0.875rem; font-weight:600; letter-spacing:0.02em;">
+        ⚠️ <span id="mode-warning-text"></span>
+    </div>
+
     <!-- Terminal Tab -->
     <main id="terminal" class="p-8">
         <div class="grid grid-cols-4 gap-6">
-            <div><h3 class="text-sm font-bold text-slate-500 mb-4 tracking-widest uppercase">Scanning</h3><div id="col-SCANNING" class="kanban-col"></div></div>
-            <div><h3 class="text-sm font-bold text-slate-500 mb-4 tracking-widest uppercase">Signals</h3><div id="col-SIGNAL" class="kanban-col"></div></div>
-            <div><h3 class="text-sm font-bold text-slate-500 mb-4 tracking-widest uppercase">Active</h3><div id="col-ACTIVE" class="kanban-col"></div></div>
-            <div><h3 class="text-sm font-bold text-slate-500 mb-4 tracking-widest uppercase">Closed</h3><div id="col-CLOSED" class="kanban-col"></div></div>
+            <div><h3 class="text-sm font-bold mb-4 tracking-widest uppercase" style="color:#fbbf24;">&#9670; Scanning</h3><div id="col-SCANNING" class="kanban-col"></div></div>
+            <div><h3 class="text-sm font-bold mb-4 tracking-widest uppercase" style="color:#a78bfa;">&#9670; Signals</h3><div id="col-SIGNAL" class="kanban-col"></div></div>
+            <div><h3 class="text-sm font-bold mb-4 tracking-widest uppercase" style="color:#22d3ee;">&#9670; Active</h3><div id="col-ACTIVE" class="kanban-col"></div></div>
+            <div><h3 class="text-sm font-bold mb-4 tracking-widest uppercase" style="color:#34d399;">&#9670; Closed</h3><div id="col-CLOSED" class="kanban-col"></div></div>
         </div>
     </main>
 
     <!-- Configuration Tab -->
-    <section id="settings" class="hidden p-8 max-w-4xl mx-auto">
-        <form id="config-form" onsubmit="saveConfig(event)">
-            <div class="space-y-6">
+    <section id="settings" class="hidden p-8 max-w-4xl mx-auto overflow-y-auto" style="max-height:90vh;">
+        <!-- Sub-tab navigation -->
+        <div class="cfg-subtab">
+            <button class="cfg-subtab-btn active" id="subtab-conn" onclick="showSubTab('conn')">Connection</button>
+            <button class="cfg-subtab-btn" id="subtab-risk" onclick="showSubTab('risk')">Risk Management</button>
+        </div>
 
-                <!-- Broker Selection -->
-                <div class="bg-white rounded-xl shadow-2xl overflow-hidden">
-                    <div class="bg-slate-900 p-5 text-white flex justify-between items-center">
-                        <h2 class="text-lg font-bold">Broker Configuration</h2>
-                        <span id="broker-status" class="text-xs bg-slate-700 px-3 py-1 rounded-full text-slate-300">Not Connected</span>
+        <form id="config-form" onsubmit="saveConfig(event)">
+
+            <!-- ═══════════════════════════════════════════════════ CONNECTION SUB-TAB ══ -->
+            <div id="cfg-panel-conn">
+
+                <!-- Broker + Mode + Status -->
+                <div class="config-section">
+                    <div class="config-header">
+                        <h2 class="text-lg font-bold text-white">Broker Connection</h2>
+                        <span id="broker-status" class="text-xs px-3 py-1 rounded-full text-white" style="background:rgba(255,255,255,0.15);">Not Connected</span>
                     </div>
-                    <div class="p-7 space-y-5">
-                        <div class="grid grid-cols-2 gap-5">
+                    <div class="config-body space-y-5">
+                        <div class="grid grid-cols-3 gap-5">
                             <div>
-                                <label class="block text-xs font-bold text-slate-500 uppercase mb-2 tracking-wider">Broker Provider</label>
-                                <select id="cfg-provider" onchange="onBrokerChange()" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm">
-                                    <option value="">-- Select Broker --</option>
-                                    <option value="dhan">Dhan (Fenix SDK)</option>
-                                    <option value="fenix">Dhan (Fenix SDK)</option>
-                                    <option value="zerodha">Zerodha Kite Connect</option>
-                                    <option value="upstox">Upstox</option>
-                                    <option value="fyers">Fyers API v2</option>
-                                    <option value="angelone">AngelOne SmartAPI</option>
-                                    <option value="aliceblue">AliceBlue</option>
-                                    <option value="5paisa">5paisa</option>
-                                    <option value="iifl">IIFL Markets</option>
-                                    <option value="kotak">Kotak Securities</option>
-                                    <option value="kotak_neo">Kotak Neo</option>
-                                    <option value="kunjee">Kunjee</option>
-                                    <option value="master_trust">Master Trust</option>
-                                    <option value="motilal">Motilal Oswal</option>
-                                    <option value="mstock">mStock (Mirae Asset)</option>
-                                    <option value="finvasia">Finvasia (Shoonya)</option>
-                                    <option value="choice">Choice Broking</option>
-                                    <option value="vpc">VPC</option>
-                                    <option value="moneysukh">Moneysukh (ONUS Capital)</option>
-                                    <option value="hdfc">HDFC Securities</option>
-                                    <option value="icici">ICICI Direct</option>
-                                    <option value="sbi">SBI Securities</option>
-                                    <option value="bajaj">Bajaj Financial</option>
-                                    <option value="geojit">Geojit</option>
-                                    <option value="sharekhan">Mirae Asset Sharekhan</option>
-                                    <option value="anand_rathi">Anand Rathi</option>
-                                    <option value="edelweiss">Edelweiss</option>
-                                    <option value="nirmal_bang">Nirmal Bang</option>
-                                    <option value="axis_direct">Axis Direct</option>
-                                    <option value="groww">Groww</option>
-                                    <option value="paytm_money">Paytm Money</option>
+                                <label class="form-label block mb-2">Broker Provider</label>
+                                <select id="cfg-provider" onchange="onBrokerChange()" class="form-select">
+                                    <option value="">-- Loading providers --</option>
                                 </select>
                             </div>
                             <div>
-                                <label class="block text-xs font-bold text-slate-500 uppercase mb-2 tracking-wider">Trading Mode</label>
-                                <select id="cfg-mode" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                <label class="form-label block mb-2">Trading Mode</label>
+                                <select id="cfg-mode" class="form-select">
                                     <option value="paper">Paper Trading (Simulated)</option>
                                     <option value="live">Live Trading (Real Money)</option>
                                 </select>
                             </div>
+                            <div>
+                                <label class="form-label block mb-2">Connection Status</label>
+                                <div id="conn-status" class="flex items-center gap-2 mt-2 text-sm font-bold" style="color:rgba(255,255,255,0.4);">
+                                    <span id="conn-dot" class="w-2.5 h-2.5 rounded-full inline-block" style="background:rgba(255,255,255,0.3);"></span>
+                                    <span id="conn-label">Not tested</span>
+                                </div>
+                            </div>
                         </div>
+                    </div>
+                </div>
 
-                        <!-- Common Fields -->
+                <!-- Credentials: Saved via API (non-sensitive) -->
+                <div class="config-section" style="border-color:rgba(99,102,241,0.3);">
+                    <div class="config-header" style="background:linear-gradient(135deg,#312e81,#4f46e5);">
+                        <h2 class="text-sm font-bold text-white">Broker Identity <span style="color:rgba(255,255,255,0.5);font-weight:400;">· saved via API</span></h2>
+                    </div>
+                    <div class="config-body space-y-5">
                         <div class="grid grid-cols-2 gap-5">
                             <div>
-                                <label class="block text-xs font-bold text-slate-500 uppercase mb-2 tracking-wider">Client ID / User ID</label>
-                                <input type="text" id="cfg-client-id" placeholder="e.g. AB123456" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm">
+                                <label class="form-label block mb-2">Client ID / User ID</label>
+                                <input type="text" id="cfg-client-id" placeholder="e.g. AB123456" class="form-input">
                             </div>
                             <div>
-                                <label class="block text-xs font-bold text-slate-500 uppercase mb-2 tracking-wider">API Access Token</label>
-                                <input type="password" id="cfg-token" placeholder="Your API access token" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm">
+                                <label class="form-label block mb-2">Consumer Key / Vendor Code</label>
+                                <input type="text" id="cfg-consumer-key" placeholder="Kotak, Finvasia, etc." class="form-input">
                             </div>
                         </div>
-
-                        <!-- Zerodha extra -->
-                        <div id="f-zerodha" class="broker-field">
+                        <!-- Broker-specific fields (non-sensitive only) -->
+                        <div id="f-kotak-consumer" class="broker-field grid grid-cols-2 gap-5">
                             <div>
-                                <label class="block text-xs font-bold text-slate-500 uppercase mb-2 tracking-wider">Kite API Key</label>
-                                <input type="text" id="cfg-zerodha-api-key" placeholder="kitecon_xxxxxxxxxxxx" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm">
-                                <p class="text-xs text-slate-400 mt-1">Get from kite.zerodha.com → Console → API Keys</p>
+                                <label class="form-label">Consumer Key</label>
+                                <input type="text" id="cfg-kotak-consumer-key" placeholder="From Kotak Neo developer portal" class="form-input">
+                            </div>
+                            <div>
+                                <label class="form-label">Consumer Secret</label>
+                                <input type="password" id="cfg-kotak-consumer-secret" placeholder="Consumer secret from Kotak portal" class="form-input">
                             </div>
                         </div>
-
-                        <!-- AngelOne extra -->
-                        <div id="f-angelone" class="broker-field grid grid-cols-2 gap-5">
-                            <div>
-                                <label class="block text-xs font-bold text-slate-500 uppercase mb-2 tracking-wider">AngelOne API Key</label>
-                                <input type="text" id="cfg-angelone-api-key" placeholder="From SmartAPI portal" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm">
-                            </div>
-                            <div>
-                                <label class="block text-xs font-bold text-slate-500 uppercase mb-2 tracking-wider">Password + TOTP</label>
-                                <input type="password" id="cfg-angelone-password" placeholder="Account password" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm">
-                            </div>
-                        </div>
-
-                        <!-- AliceBlue extra -->
-                        <div id="f-aliceblue" class="broker-field grid grid-cols-2 gap-5">
-                            <div>
-                                <label class="block text-xs font-bold text-slate-500 uppercase mb-2 tracking-wider">App Code</label>
-                                <input type="text" id="cfg-aliceblue-app-code" placeholder="From AliceBlue developer portal" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm">
-                            </div>
-                            <div>
-                                <label class="block text-xs font-bold text-slate-500 uppercase mb-2 tracking-wider">API Secret</label>
-                                <input type="password" id="cfg-aliceblue-api-secret" placeholder="From AliceBlue developer portal" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm">
-                            </div>
-                        </div>
-
-                        <!-- IIFL extra -->
-                        <div id="f-iifl" class="broker-field grid grid-cols-2 gap-5">
-                            <div>
-                                <label class="block text-xs font-bold text-slate-500 uppercase mb-2 tracking-wider">IIFL API Key</label>
-                                <input type="text" id="cfg-iifl-api-key" placeholder="From IIFL developer portal" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm">
-                            </div>
-                            <div>
-                                <label class="block text-xs font-bold text-slate-500 uppercase mb-2 tracking-wider">Password</label>
-                                <input type="password" id="cfg-iifl-password" placeholder="IIFL account password" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm">
-                            </div>
-                        </div>
-
-                        <!-- Kotak / Kotak Neo extra -->
-                        <div id="f-kotak-common" class="broker-field">
-                            <div>
-                                <label class="block text-xs font-bold text-slate-500 uppercase mb-2 tracking-wider">Consumer Key</label>
-                                <input type="text" id="cfg-kotak-consumer-key" placeholder="From Kotak developer portal" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm">
-                            </div>
-                        </div>
-
-                        <!-- Finvasia extra -->
-                        <div id="f-finvasia" class="broker-field grid grid-cols-2 gap-5">
-                            <div>
-                                <label class="block text-xs font-bold text-slate-500 uppercase mb-2 tracking-wider">Vendor Code</label>
-                                <input type="text" id="cfg-finvasia-vendor-code" placeholder="Shoonya vendor code" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm">
-                            </div>
-                            <div>
-                                <label class="block text-xs font-bold text-slate-500 uppercase mb-2 tracking-wider">Year of Birth (YOB)</label>
-                                <input type="text" id="cfg-finvasia-yob" placeholder="1990" maxlength="4" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm">
-                            </div>
-                        </div>
-
-                        <!-- Motilal extra -->
-                        <div id="f-motilal" class="broker-field grid grid-cols-2 gap-5">
-                            <div>
-                                <label class="block text-xs font-bold text-slate-500 uppercase mb-2 tracking-wider">Motilal API Key</label>
-                                <input type="text" id="cfg-motilal-api-key" placeholder="From Motilal developer portal" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm">
-                            </div>
-                            <div>
-                                <label class="block text-xs font-bold text-slate-500 uppercase mb-2 tracking-wider">Password</label>
-                                <input type="password" id="cfg-motilal-password" placeholder="Motilal account password" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm">
-                            </div>
-                        </div>
-
-                        <!-- Master Trust extra -->
                         <div id="f-master_trust" class="broker-field">
                             <div>
-                                <label class="block text-xs font-bold text-slate-500 uppercase mb-2 tracking-wider">App Key</label>
-                                <input type="text" id="cfg-master-trust-app-key" placeholder="From Master Trust developer portal" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm">
+                                <label class="form-label">App Key</label>
+                                <input type="text" id="cfg-master-trust-app-key" placeholder="From Master Trust developer portal" class="form-input">
+                            </div>
+                        </div>
+                        <div id="f-geojit" class="broker-field">
+                            <label class="form-label">Year of Birth (YYYY)</label>
+                            <input type="text" id="cfg-geojit-yob" placeholder="1990" maxlength="4" class="form-input" style="max-width:200px;">
+                        </div>
+                        <div id="f-zerodha" class="broker-field">
+                            <div>
+                                <label class="form-label">Encrypted Token (enctoken)</label>
+                                <input type="password" id="cfg-zerodha-enctoken" placeholder="From browser cookies after Kite login (optional)" class="form-input">
+                                <p class="text-xs mt-1" style="color:#94a3b8;">enctoken from Kite web session cookie — use only if you have it. OAuth access_token is preferred.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Credentials: Env vars only (sensitive — not persisted) -->
+                <div class="config-section" style="border-color:rgba(251,191,36,0.25);">
+                    <div class="config-header" style="background:linear-gradient(135deg,#451a03,#92400e);">
+                        <h2 class="text-sm font-bold text-white">
+                            Sensitive Credentials
+                            <span class="env-only-badge" style="margin-left:8px;vertical-align:middle;">Env vars only — cannot be saved from browser</span>
+                        </h2>
+                    </div>
+                    <div class="config-body space-y-4">
+                        <p class="text-xs mb-3" style="color:rgba(251,191,36,0.7);">These fields are used to test your broker connection. They are never sent to the server or stored — set them as environment variables for persistence.</p>
+                        <div class="grid grid-cols-2 gap-5">
+                            <div>
+                                <label class="form-label block mb-1">Password</label>
+                                <input type="password" id="cfg-password" placeholder="Trading account password" class="form-input">
+                            </div>
+                            <div>
+                                <label class="form-label block mb-1">API Key / App Key</label>
+                                <input type="text" id="cfg-api-key" placeholder="Broker API key" class="form-input">
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-5">
+                            <div>
+                                <label class="form-label block mb-1">API Secret / App Code</label>
+                                <input type="password" id="cfg-api-secret" placeholder="API secret or app code" class="form-input">
+                            </div>
+                            <div>
+                                <label class="form-label block mb-1">Access / Session Token</label>
+                                <input type="password" id="cfg-access-token" placeholder="API access or session token" class="form-input">
                             </div>
                         </div>
 
-                        <!-- mStock extra -->
+                        <!-- Broker-specific sensitive fields -->
+                        <div id="f-angelone-totp" class="broker-field">
+                            <label class="form-label block mb-1">AngelOne TOTP</label>
+                            <input type="text" id="cfg-angelone-totp" placeholder="6-digit TOTP from authenticator app" maxlength="6" class="form-input" style="max-width:200px;">
+                            <p class="text-xs mt-1" style="color:#94a3b8;">Required for SmartAPI login — generate with Google Authenticator or Authy.</p>
+                        </div>
+
+                        <div id="f-totp-shared" class="broker-field">
+                            <label class="form-label block mb-1">TOTP Secret (Auto-Login)</label>
+                            <input type="text" id="cfg-totp-secret" placeholder="pyotp base32 secret (e.g. JBSWY3DPEHPK3PXP)" class="form-input">
+                            <p class="text-xs mt-1" style="color:#94a3b8;">Used for AngelOne, Choice, Finvasia, Geojit, AliceBlue, IIFL — generate with any TOTP app.</p>
+                        </div>
+
                         <div id="f-mstock" class="broker-field grid grid-cols-2 gap-5">
                             <div>
-                                <label class="block text-xs font-bold text-slate-500 uppercase mb-2 tracking-wider">Client ID</label>
-                                <input type="text" id="cfg-mstock-client-id" placeholder="mStock client ID" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm">
+                                <label class="form-label">mStock Client ID</label>
+                                <input type="text" id="cfg-mstock-client-id" placeholder="mStock client ID" class="form-input">
                             </div>
                             <div>
-                                <label class="block text-xs font-bold text-slate-500 uppercase mb-2 tracking-wider">API Key</label>
-                                <input type="text" id="cfg-mstock-api-key" placeholder="From mStock developer portal" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm">
+                                <label class="form-label">mStock Password</label>
+                                <input type="password" id="cfg-mstock-password" placeholder="mStock account password" class="form-input">
                             </div>
                         </div>
 
-                        <!-- TOTP (shared) -->
-                        <div id="f-totp" class="broker-field">
+                        <div id="f-moneysukh" class="broker-field grid grid-cols-2 gap-5">
                             <div>
-                                <label class="block text-xs font-bold text-slate-500 uppercase mb-2 tracking-wider">TOTP Secret (for Auto-Login)</label>
-                                <input type="text" id="cfg-totp-secret" placeholder="pyotp base32 secret" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm">
-                                <p class="text-xs text-slate-400 mt-1">Used for AngelOne, Choice, Finvasia — generate with any TOTP app (Google Authenticator)</p>
+                                <label class="form-label">Moneysukh Client ID</label>
+                                <input type="text" id="cfg-moneysukh-client-id" placeholder="Moneysukh client ID" class="form-input">
+                            </div>
+                            <div>
+                                <label class="form-label">Moneysukh API Key</label>
+                                <input type="text" id="cfg-moneysukh-api-key" placeholder="Your Moneysukh API key" class="form-input">
                             </div>
                         </div>
-
-                        <!-- Moneysukh extra -->
-                        <div id="f-moneysukh" class="broker-field">
-                            <div>
-                                <label class="block text-xs font-bold text-slate-500 uppercase mb-2 tracking-wider">Moneysukh API Key</label>
-                                <input type="text" id="cfg-moneysukh-api-key" placeholder="Your Moneysukh API key" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm">
-                            </div>
-                        </div>
-
-                        <!-- Geojit extra -->
-                        <div id="f-geojit" class="broker-field grid grid-cols-2 gap-5">
-                            <div>
-                                <label class="block text-xs font-bold text-slate-500 uppercase mb-2 tracking-wider">Geojit Password</label>
-                                <input type="password" id="cfg-geojit-password" placeholder="Geojit trading password" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm">
-                            </div>
-                            <div>
-                                <label class="block text-xs font-bold text-slate-500 uppercase mb-2 tracking-wider">Year of Birth (YYYY)</label>
-                                <input type="text" id="cfg-geojit-yob" placeholder="1990" maxlength="4" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm">
-                            </div>
-                        </div>
-
-                        <button type="button" onclick="testConnection()" class="w-full bg-emerald-600 text-white py-3 rounded-lg font-bold uppercase tracking-wider hover:bg-emerald-700 shadow-lg shadow-emerald-500/20 transition-all text-sm">Test Connection</button>
                     </div>
                 </div>
 
-                <!-- Risk & Capital -->
-                <div class="bg-white rounded-xl shadow-2xl overflow-hidden">
-                    <div class="bg-slate-900 p-5 text-white">
-                        <h2 class="text-lg font-bold">Risk Management</h2>
+                <button type="button" onclick="testConnection()" id="btn-test" class="w-full text-white py-3 rounded-lg font-bold uppercase tracking-wider transition-all text-sm shadow-lg" style="background:rgba(16,185,129,0.8);border:1px solid rgba(16,185,129,0.4);">Test Connection</button>
+            </div>
+
+            <!-- ═══════════════════════════════════════════════════ RISK SUB-TAB ══ -->
+            <div id="cfg-panel-risk" class="hidden">
+
+                <div class="config-section">
+                    <div class="config-header">
+                        <h2 class="text-lg font-bold text-white">Risk Parameters</h2>
                     </div>
-                    <div class="p-7 space-y-5">
+                    <div class="config-body space-y-5">
+                        <div id="risk-validation-errors" class="hidden mb-2 p-3 rounded-lg text-sm font-bold" style="background:rgba(239,68,68,0.15);color:#f87171;border:1px solid rgba(239,68,68,0.3);"></div>
                         <div class="grid grid-cols-3 gap-5">
                             <div>
-                                <label class="block text-xs font-bold text-slate-500 uppercase mb-2 tracking-wider">Operational Capital (₹)</label>
-                                <input type="number" id="cfg-capital" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm">
+                                <label class="form-label">Operational Capital (₹)</label>
+                                <input type="number" id="cfg-capital" min="1" step="1" class="form-input" oninput="clearRiskErrors()">
                             </div>
                             <div>
-                                <label class="block text-xs font-bold text-slate-500 uppercase mb-2 tracking-wider">Max Risk Per Trade (%)</label>
-                                <input type="number" step="0.1" id="cfg-max-risk" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm">
+                                <label class="form-label">Max Risk Per Trade (%)</label>
+                                <input type="number" step="0.1" id="cfg-max-risk" min="0.1" max="100" class="form-input" oninput="clearRiskErrors()">
                             </div>
                             <div>
-                                <label class="block text-xs font-bold text-slate-500 uppercase mb-2 tracking-wider">Fixed Lot Count</label>
-                                <input type="number" id="cfg-lots" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm">
+                                <label class="form-label">Fixed Lot Count</label>
+                                <input type="number" id="cfg-lots" min="1" step="1" class="form-input" oninput="clearRiskErrors()">
                             </div>
                         </div>
-                        <div>
-                            <label class="block text-xs font-bold text-slate-500 uppercase mb-2 tracking-wider">Daily Max Loss (₹)</label>
-                            <input type="number" id="cfg-daily-loss" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm">
+                        <div class="grid grid-cols-2 gap-5">
+                            <div>
+                                <label class="form-label">Daily Max Loss (₹)</label>
+                                <input type="number" id="cfg-daily-loss" min="0" step="1" class="form-input" oninput="clearRiskErrors()">
+                            </div>
+                            <div>
+                                <label class="form-label">Target Frequency</label>
+                                <select id="cfg-frequency" class="form-select">
+                                    <option value="hft">HFT — High Frequency (<50ms, WebSocket)</option>
+                                    <option value="scalping">Scalping (30s–5min bars, REST 2s)</option>
+                                    <option value="swing">Swing (overnight holds, REST 60s)</option>
+                                </select>
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <div class="flex gap-4">
-                    <button type="submit" class="flex-1 bg-blue-600 text-white py-4 rounded-xl font-black uppercase tracking-widest hover:bg-blue-700 shadow-xl shadow-blue-500/30 transition-all">Save & Apply Configuration</button>
-                    <button type="button" onclick="location.reload()" class="px-8 bg-slate-200 text-slate-700 py-4 rounded-xl font-bold hover:bg-slate-300 transition-all">Reset</button>
+                <div class="flex gap-4 mt-6">
+                    <button type="submit" class="flex-1 btn-primary">Save & Apply Configuration</button>
+                    <button type="button" onclick="resetForm()" class="px-8 py-4 rounded-xl font-bold transition-all" style="background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.7);border:1px solid rgba(255,255,255,0.15);">Reset</button>
                 </div>
 
-                <!-- Save feedback -->
                 <div id="save-feedback" class="hidden text-center py-3 rounded-lg font-bold text-sm"></div>
             </div>
+
         </form>
     </section>
 
     <!-- Connection Test Modal -->
-    <div id="test-modal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-        <div class="bg-white rounded-2xl shadow-2xl p-8 max-w-sm w-full mx-4 text-center">
-            <div id="test-spinner" class="text-4xl mb-4">⏳</div>
+    <div id="test-modal" class="hidden fixed inset-0 bg-black/60 flex items-center justify-center z-50" style="backdrop-filter:blur(4px);">
+        <div class="config-section p-8 w-full max-w-sm mx-4 text-center" style="border-radius:20px;">
+            <div id="test-spinner" class="text-5xl mb-4">⏳</div>
             <div id="test-result" class="text-lg font-bold mb-2">Testing connection...</div>
-            <div id="test-detail" class="text-sm text-slate-500 mb-6"></div>
-            <button onclick="closeModal()" class="px-6 py-2 bg-slate-900 text-white rounded-lg font-bold hover:bg-slate-700">Close</button>
+            <div id="test-detail" class="text-sm mb-6" style="color:rgba(255,255,255,0.45);"></div>
+            <div id="test-actions" class="flex gap-3 justify-center">
+                <button onclick="closeModal()" class="btn-primary">Close</button>
+            </div>
         </div>
     </div>
 
     <script>
-        const PROVIDER_FIELDS = {
-            zerodha:      ['f-zerodha', 'f-totp'],
-            angelone:     ['f-angelone', 'f-totp'],
-            aliceblue:    ['f-aliceblue', 'f-totp'],
-            iifl:         ['f-iifl', 'f-totp'],
-            kotak:        ['f-kotak-common'],
-            kotak_neo:    ['f-kotak-common'],
-            finvasia:     ['f-finvasia', 'f-totp'],
-            motilal:      ['f-motilal'],
-            master_trust: ['f-master_trust'],
-            mstock:        ['f-mstock'],
-            choice:       ['f-totp'],
-            moneysukh:    ['f-moneysukh'],
-            geojit:       ['f-geojit'],
-            hdfc:         [],
-            icici:        [],
-            sbi:          [],
-            bajaj:        [],
-            sharekhan:    [],
-            anand_rathi:  [],
-            edelweiss:    [],
-            nirmal_bang:  [],
-            axis_direct:  [],
-            groww:        [],
-            paytm_money:  [],
-        };
+    'use strict';
 
-        function showTab(id) {
-            document.getElementById('terminal').classList.toggle('hidden', id !== 'terminal');
-            document.getElementById('settings').classList.toggle('hidden', id !== 'settings');
-            document.getElementById('tab-terminal').classList.toggle('tab-active', id === 'terminal');
-            document.getElementById('tab-settings').classList.toggle('tab-active', id === 'settings');
-            if (id === 'settings') loadConfig();
+    // ─────────────────────────────────────────────────────────────────
+    // GROUP 1 · ConfigState
+    // Module-level state. All mutable shared state lives here.
+    // ─────────────────────────────────────────────────────────────────
+    let _savedConfig   = null;   // last successfully loaded config (for reset)
+    let _pendingProvider = '';   // provider waiting for broker list to load
+    let _activeSubTab  = 'conn'; // current settings sub-tab
+
+    // ─────────────────────────────────────────────────────────────────
+    // GROUP 2 · ConfigBroker
+    // Broker list loading + conditional field visibility + credential I/O
+    // ─────────────────────────────────────────────────────────────────
+
+    /**
+     * Maps provider_key → IDs of broker-specific form sections to show.
+     * Only brokers with conditional fields are listed here.
+     * Credentials (password, TOTP, API keys) are NEVER persisted via the API —
+     * they must be set via environment variables.
+     */
+    const PROVIDER_FIELDS = {
+        zerodha:      ['f-zerodha'],
+        angelone:     ['f-angelone-totp'],
+        kotak:        ['f-kotak-consumer'],
+        kotak_neo:    ['f-kotak-consumer'],
+        finvasia:     ['f-totp-shared'],
+        motilal:      ['f-totp-shared'],
+        choice:       ['f-totp-shared'],
+        aliceblue:    ['f-totp-shared'],
+        iifl:         ['f-totp-shared'],
+        geojit:       ['f-geojit'],
+        master_trust: ['f-master_trust'],
+        mstock:       ['f-mstock'],
+        moneysukh:    ['f-moneysukh'],
+    };
+
+    async function loadBrokerList() {
+        const sel = document.getElementById('cfg-provider');
+        try {
+            const res = await fetch('/api/brokers?limit=100');
+            if (!res.ok) throw new Error('API unavailable');
+            const data = await res.json();
+            sel.innerHTML = '<option value="">-- Select Broker --</option>';
+            const seen = new Set();
+            for (const b of data.brokers || []) {
+                if (b.name && !seen.has(b.name)) {
+                    seen.add(b.name);
+                    const opt = document.createElement('option');
+                    opt.value = b.provider_key;
+                    opt.textContent = b.name;
+                    sel.appendChild(opt);
+                }
+            }
+            if (_pendingProvider) {
+                sel.value = _pendingProvider;
+                onBrokerChange();
+                _pendingProvider = '';
+            }
+        } catch (_) {
+            sel.innerHTML = '<option value="">-- Select Broker (API unavailable) --</option>';
+            Object.keys(PROVIDER_FIELDS).forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p;
+                opt.textContent = p.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                sel.appendChild(opt);
+            });
         }
+    }
 
-        async function loadConfig() {
-            const r = await fetch('/config');
-            const d = await r.json();
-            document.getElementById('cfg-provider').value = d.provider || '';
-            document.getElementById('cfg-mode').value = d.mode || 'paper';
-            document.getElementById('cfg-client-id').value = d.client_id || '';
-            document.getElementById('cfg-token').value = d.access_token || '';
-            document.getElementById('cfg-capital').value = d.risk?.capital || 1000000;
-            document.getElementById('cfg-lots').value = d.risk?.fixed_lots || 1;
-            document.getElementById('cfg-max-risk').value = d.risk?.max_risk_per_trade_percent || 1.0;
-            document.getElementById('cfg-daily-loss').value = d.risk?.daily_max_loss || 5000;
-            document.getElementById('cfg-totp-secret').value = d.totp_secret || '';
+    function onBrokerChange() {
+        const p = document.getElementById('cfg-provider').value;
+        document.querySelectorAll('.broker-field').forEach(el => el.style.display = 'none');
+        if (PROVIDER_FIELDS[p]) {
+            PROVIDER_FIELDS[p].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) {
+                    el.style.display = (id === 'f-kotak-consumer' || id === 'f-mstock' || id === 'f-moneysukh')
+                        ? 'grid' : 'block';
+                }
+            });
+        }
+        document.getElementById('conn-status').style.display = 'none';
+    }
+
+    /**
+     * Read broker-specific non-sensitive fields from config object into form.
+     * Only non-sensitive display fields (yob, consumer_key, app_key, enctoken).
+     */
+    function applyBrokerFields(d) {
+        document.getElementById('cfg-geojit-yob').value = d.yob || '';
+        document.getElementById('cfg-kotak-consumer-key').value = d.consumer_key || '';
+        document.getElementById('cfg-kotak-consumer-secret').value = d.client_secret || '';
+        document.getElementById('cfg-master-trust-app-key').value = d.app_key || '';
+        document.getElementById('cfg-zerodha-enctoken').value = d.enctoken || '';
+        // AngelOne TOTP may come back as totp_secret or totp depending on broker impl
+        const totp = d.totp_secret || d.totp || '';
+        document.getElementById('cfg-angelone-totp').value = totp;
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // GROUP 3 · ConfigConnection
+    // Connection test + modal UI
+    // ─────────────────────────────────────────────────────────────────
+
+    function showModal(msg, detail, isOk) {
+        document.getElementById('test-result').textContent = msg;
+        document.getElementById('test-detail').textContent = detail || '';
+        document.getElementById('test-spinner').textContent =
+            isOk === true ? '✅' : (isOk === false ? '❌' : '⏳');
+        document.getElementById('test-modal').classList.remove('hidden');
+    }
+
+    function closeModal() {
+        document.getElementById('test-modal').classList.add('hidden');
+    }
+
+    /**
+     * Build credentials object from form fields.
+     * All fields are included so testConnection() can try any combination,
+     * but only non-empty values are sent to the API.
+     */
+    function buildCredentials() {
+        return {
+            provider:      document.getElementById('cfg-provider').value,
+            client_id:     document.getElementById('cfg-client-id').value.trim() || undefined,
+            password:      document.getElementById('cfg-password').value.trim() || undefined,
+            api_key:       document.getElementById('cfg-api-key').value.trim() || undefined,
+            api_secret:    document.getElementById('cfg-api-secret').value.trim() || undefined,
+            access_token:  document.getElementById('cfg-access-token').value.trim() || undefined,
+            consumer_key:  document.getElementById('cfg-consumer-key').value.trim() || undefined,
+            totp_secret:   document.getElementById('cfg-totp-secret').value.trim() || undefined,
+            yob:           document.getElementById('cfg-geojit-yob').value.trim() || undefined,
+            client_secret: document.getElementById('cfg-kotak-consumer-secret').value.trim() || undefined,
+            app_key:       document.getElementById('cfg-master-trust-app-key').value.trim() || undefined,
+            enctoken:      document.getElementById('cfg-zerodha-enctoken').value.trim() || undefined,
+            totp:          document.getElementById('cfg-angelone-totp').value.trim() || undefined,
+        };
+    }
+
+    async function testConnection() {
+        const provider = document.getElementById('cfg-provider').value;
+        if (!provider) {
+            showModal('No broker selected', 'Choose a broker provider first.', false);
+            return;
+        }
+        const credentials = buildCredentials();
+        // Strip empty strings — broker factory expects None for missing fields
+        Object.keys(credentials).forEach(k => { if (!credentials[k]) delete credentials[k]; });
+
+        showModal('Testing...', `${provider} — attempting login`, null);
+        const res = await fetch('/config/test-connection', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(credentials),
+        });
+        const data = await res.json();
+
+        const dot   = document.getElementById('conn-dot');
+        const label = document.getElementById('conn-label');
+        if (data.login_ok) {
+            dot.style.background   = '#22c55e';
+            label.textContent      = 'Connected';
+            label.style.color      = '#4ade80';
+            document.getElementById('conn-status').style.display = 'flex';
+            showModal(
+                'Connection Successful',
+                `${provider} login verified. Ready for ${document.getElementById('cfg-mode').value} trading.`,
+                true
+            );
+        } else {
+            dot.style.background   = '#ef4444';
+            label.textContent      = 'Failed';
+            label.style.color      = '#f87171';
+            document.getElementById('conn-status').style.display = 'flex';
+            showModal('Connection Failed', data.error || 'Check credentials and try again.', false);
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // GROUP 4 · ConfigRisk
+    // Risk field validation + reset + inline error display
+    // ─────────────────────────────────────────────────────────────────
+
+    function showRiskErrors(errors) {
+        const el = document.getElementById('risk-validation-errors');
+        el.innerHTML = errors.join('<br>');
+        el.classList.remove('hidden');
+    }
+
+    function clearRiskErrors() {
+        document.getElementById('risk-validation-errors').classList.add('hidden');
+    }
+
+    function validateRiskFields() {
+        const capital  = parseFloat(document.getElementById('cfg-capital').value);
+        const maxRisk  = parseFloat(document.getElementById('cfg-max-risk').value);
+        const dailyLoss = parseFloat(document.getElementById('cfg-daily-loss').value);
+        const lots     = parseInt(document.getElementById('cfg-lots').value);
+        const errors   = [];
+        if (isNaN(capital)  || capital <= 0)    errors.push('• Operational Capital must be a positive number.');
+        if (isNaN(maxRisk)  || maxRisk <= 0 || maxRisk > 100)
+            errors.push('• Max Risk Per Trade must be between 0.1 and 100.');
+        if (isNaN(dailyLoss) || dailyLoss < 0)  errors.push('• Daily Max Loss cannot be negative.');
+        if (isNaN(lots)     || lots <= 0)        errors.push('• Fixed Lot Count must be at least 1.');
+        return errors;
+    }
+
+    function resetForm() {
+        if (!_savedConfig) return;
+        document.getElementById('cfg-mode').value     = _savedConfig.mode || 'paper';
+        document.getElementById('cfg-capital').value    = _savedConfig.risk?.capital || 1000000;
+        document.getElementById('cfg-lots').value      = _savedConfig.risk?.fixed_lots || 1;
+        document.getElementById('cfg-max-risk').value  = _savedConfig.risk?.max_risk_per_trade_percent || 1.0;
+        document.getElementById('cfg-daily-loss').value = _savedConfig.risk?.daily_max_loss || 5000;
+        document.getElementById('cfg-frequency').value  = _savedConfig.risk?.target_frequency || 'swing';
+        document.getElementById('cfg-client-id').value = _savedConfig.client_id || '';
+        document.getElementById('cfg-consumer-key').value = _savedConfig.consumer_key || '';
+        applyBrokerFields(_savedConfig);
+        const sel = document.getElementById('cfg-provider');
+        if (sel.options.length > 1) {
+            sel.value = _savedConfig.provider || '';
             onBrokerChange();
         }
+        clearRiskErrors();
+    }
 
-        function onBrokerChange() {
-            const p = document.getElementById('cfg-provider').value;
-            // Hide all broker-specific fields
-            document.querySelectorAll('.broker-field').forEach(el => el.style.display = 'none');
-            // Show fields for selected broker
-            if (PROVIDER_FIELDS[p]) {
-                PROVIDER_FIELDS[p].forEach(id => {
-                    const el = document.getElementById(id);
-                    if (el) el.style.display = p === 'angelone' || p === 'finvasia' || p === 'iifl' || p === 'motilal' ? 'grid' : 'block';
-                });
+    // ─────────────────────────────────────────────────────────────────
+    // GROUP 5 · ConfigSave
+    // Save config + feedback display
+    // ─────────────────────────────────────────────────────────────────
+
+    function showFeedback(msg, type) {
+        const fb = document.getElementById('save-feedback');
+        fb.textContent = msg;
+        fb.className   = 'text-center py-3 rounded-lg font-bold text-sm';
+        if (type === 'success') {
+            fb.style.background = 'rgba(34,197,94,0.15)';
+            fb.style.color      = '#4ade80';
+            fb.style.border     = '1px solid rgba(34,197,94,0.3)';
+        } else {
+            fb.style.background = 'rgba(239,68,68,0.15)';
+            fb.style.color      = '#f87171';
+            fb.style.border     = '1px solid rgba(239,68,68,0.3)';
+        }
+        fb.classList.remove('hidden');
+    }
+
+    async function saveConfig(e) {
+        if (e) e.preventDefault();
+        // Risk validation only blocks saves to the Risk sub-tab
+        if (_activeSubTab === 'risk') {
+            const errors = validateRiskFields();
+            if (errors.length > 0) {
+                showRiskErrors(errors);
+                return;
             }
         }
+        clearRiskErrors();
 
-        async function saveConfig(e) {
-            if (e) e.preventDefault();
-            const provider = document.getElementById('cfg-provider').value;
-            const config = {
-                provider:  provider,
-                mode:      document.getElementById('cfg-mode').value,
-                client_id: document.getElementById('cfg-client-id').value.trim(),
-                access_token: document.getElementById('cfg-token').value.trim(),
-                totp_secret: document.getElementById('cfg-totp-secret').value.trim(),
-                risk: {
-                    capital: parseFloat(document.getElementById('cfg-capital').value) || 1000000,
-                    fixed_lots: parseInt(document.getElementById('cfg-lots').value) || 1,
-                    max_risk_per_trade_percent: parseFloat(document.getElementById('cfg-max-risk').value) || 1.0,
-                    daily_max_loss: parseFloat(document.getElementById('cfg-daily-loss').value) || 5000,
-                }
-            };
-            // Strip empty optional fields
-            if (!config.totp_secret) delete config.totp_secret;
-            const res = await fetch('/config', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(config)
-            });
-            const fb = document.getElementById('save-feedback');
-            if (res.ok) {
-                fb.textContent = 'Configuration saved. Restart the application to apply changes.';
-                fb.className = 'text-center py-3 rounded-lg font-bold text-sm bg-green-100 text-green-800';
-                fb.classList.remove('hidden');
-            } else {
-                fb.textContent = 'Failed to save configuration.';
-                fb.className = 'text-center py-3 rounded-lg font-bold text-sm bg-red-100 text-red-800';
-                fb.classList.remove('hidden');
-            }
-        }
-
-        function showModal(msg, detail, isOk) {
-            document.getElementById('test-result').textContent = msg;
-            document.getElementById('test-detail').textContent = detail || '';
-            document.getElementById('test-spinner').textContent = isOk ? '✅' : (isOk === false ? '❌' : '⏳');
-            document.getElementById('test-modal').classList.remove('hidden');
-        }
-        function closeModal() { document.getElementById('test-modal').classList.add('hidden'); }
-
-        async function testConnection() {
-            const provider = document.getElementById('cfg-provider').value;
-            if (!provider) { showModal('No broker selected', 'Choose a broker provider first.', false); return; }
-            showModal('Testing...', 'Attempting login with current credentials', null);
-            const config = {
-                provider: provider,
-                mode: 'live',
-                client_id: document.getElementById('cfg-client-id').value.trim(),
-                access_token: document.getElementById('cfg-token').value.trim(),
-                totp_secret: document.getElementById('cfg-totp-secret').value.trim(),
-                risk: { capital: 0 }
-            };
-            const res = await fetch('/config', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(config)
-            });
-            if (!res.ok) { showModal('Config save failed', await res.text(), false); return; }
-            const con = await fetch('/config/test');
-            const data = await con.json();
-            if (data.login_ok) {
-                showModal('Connection Successful', `${provider} login verified. You are ready for live trading.`, true);
-            } else {
-                showModal('Connection Failed', data.error || 'Check your credentials and try again.', false);
-            }
-        }
-
-        // WebSocket
-        const ws = new WebSocket(`ws://${window.location.host}/ws`);
-        ws.onmessage = (e) => {
-            const d = JSON.parse(e.data);
-            document.getElementById('stat-capital').innerText = '₹' + (d.dashboard?.summary?.capital || 0).toLocaleString();
-            document.getElementById('status-mode').innerText = (d.dashboard?.summary?.mode || 'paper').toUpperCase() + ' MODE';
-            ['SCANNING', 'SIGNAL', 'ACTIVE', 'CLOSED'].forEach(col => {
-                const el = document.getElementById('col-' + col);
-                if (!el) return;
-                el.innerHTML = '';
-                (d.dashboard?.kanban?.[col] || []).forEach(item => {
-                    const card = document.createElement('div');
-                    card.className = 'card ' + (item.side === 'BUY' ? 'card-buy' : item.side === 'SELL' ? 'card-sell' : '');
-                    card.innerHTML = typeof item === 'string'
-                        ? `<b>${item}</b><br><small class="text-slate-400 font-bold uppercase tracking-tighter">Analyzing...</small>`
-                        : `<div class="flex justify-between font-bold"><span>${item.symbol}</span><span class="${item.side === 'BUY' ? 'text-emerald-500' : 'text-rose-500'}">${item.side}</span></div><div class="text-xs text-slate-500 mt-2">Entry: ₹${item.price || '—'} | Qty: ${item.quantity || ''}</div>`;
-                    el.appendChild(card);
-                });
-            });
+        const config = {
+            provider:         document.getElementById('cfg-provider').value,
+            mode:             document.getElementById('cfg-mode').value,
+            target_frequency: document.getElementById('cfg-frequency').value,
+            client_id:        document.getElementById('cfg-client-id').value.trim() || undefined,
+            consumer_key:     document.getElementById('cfg-consumer-key').value.trim() || undefined,
+            risk: {
+                capital:                  parseFloat(document.getElementById('cfg-capital').value) || 1000000,
+                fixed_lots:              parseInt(document.getElementById('cfg-lots').value) || 1,
+                max_risk_per_trade_percent: parseFloat(document.getElementById('cfg-max-risk').value) || 1.0,
+                daily_max_loss:          parseFloat(document.getElementById('cfg-daily-loss').value) || 5000,
+            },
         };
-        ws.onclose = () => { document.getElementById('status-mode').textContent = 'DISCONNECTED'; };
+        // Remove undefined top-level fields
+        Object.keys(config).forEach(k => { if (config[k] === undefined) delete config[k]; });
 
-        // Init tab
-        showTab('terminal');
+        const res = await fetch('/config', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(config),
+        });
+        if (res.ok) {
+            _savedConfig = config;
+            showFeedback('Configuration saved. Restart the application to apply broker changes.', 'success');
+        } else {
+            showFeedback('Failed to save configuration.', 'error');
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // GROUP 6 · ConfigLoad
+    // Load config from API + apply to form
+    // ─────────────────────────────────────────────────────────────────
+
+    async function loadConfig() {
+        try {
+            const r = await fetch('/config');
+            const d = await r.json();
+            _savedConfig = d;   // store for reset
+
+            // Non-sensitive fields only — sensitive ones stripped by the API
+            document.getElementById('cfg-mode').value     = d.mode || 'paper';
+            document.getElementById('cfg-capital').value   = d.risk?.capital || 1000000;
+            document.getElementById('cfg-lots').value      = d.risk?.fixed_lots || 1;
+            document.getElementById('cfg-max-risk').value  = d.risk?.max_risk_per_trade_percent || 1.0;
+            document.getElementById('cfg-daily-loss').value = d.risk?.daily_max_loss || 5000;
+            document.getElementById('cfg-frequency').value  = d.risk?.target_frequency || 'swing';
+            document.getElementById('cfg-client-id').value  = d.client_id || '';
+            document.getElementById('cfg-consumer-key').value = d.consumer_key || '';
+            applyBrokerFields(d);
+
+            const sel = document.getElementById('cfg-provider');
+            if (sel.options.length > 1) {
+                sel.value = d.provider || '';
+                onBrokerChange();
+            } else {
+                _pendingProvider = d.provider || '';
+            }
+        } catch (e) {
+            console.error('loadConfig failed:', e);
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // GROUP 7 · ConfigTab + WebSocket
+    // Entry points: tab switcher, sub-tab switcher, WS feed
+    // ─────────────────────────────────────────────────────────────────
+
+    function showTab(id) {
+        document.getElementById('terminal').classList.toggle('hidden', id !== 'terminal');
+        document.getElementById('settings').classList.toggle('hidden', id !== 'settings');
+        document.getElementById('tab-terminal').classList.toggle('tab-active', id === 'terminal');
+        document.getElementById('tab-settings').classList.toggle('tab-active', id === 'settings');
+        if (id === 'settings') {
+            loadBrokerList();
+            loadConfig();
+        }
+    }
+
+    function showSubTab(id) {
+        _activeSubTab = id;
+        document.getElementById('cfg-panel-conn').classList.toggle('hidden', id !== 'conn');
+        document.getElementById('cfg-panel-risk').classList.toggle('hidden', id !== 'risk');
+        document.getElementById('subtab-conn').classList.toggle('active', id === 'conn');
+        document.getElementById('subtab-risk').classList.toggle('active', id === 'risk');
+    }
+
+    // ── WebSocket feed ───────────────────────────────────────────────
+    const ws = new WebSocket(`ws://${window.location.host}/ws`);
+    ws.onmessage = (e) => {
+        const d = JSON.parse(e.data);
+        document.getElementById('stat-capital').innerText =
+            '₹' + (d.dashboard?.summary?.capital || 0).toLocaleString();
+
+        // Mode badge — LIVE gets green accent, PAPER stays amber
+        const mode = (d.dashboard?.summary?.mode || 'paper').toUpperCase();
+        const modeEl = document.getElementById('status-mode');
+        modeEl.innerText = mode + ' MODE';
+        if (mode === 'LIVE') {
+            modeEl.style.background = 'linear-gradient(135deg, #065f46, #047857)';
+            modeEl.style.color = '#d1fae5';
+            modeEl.style.boxShadow = '0 0 8px rgba(16,185,129,0.5)';
+        } else {
+            modeEl.style.background = 'linear-gradient(135deg, #92400e, #b45309)';
+            modeEl.style.color = '#fef3c7';
+            modeEl.style.boxShadow = 'none';
+        }
+
+        // Mode warning — shown when live auth fails and paper fallback is active
+        const warningBanner = document.getElementById('mode-warning-banner');
+        const warningText = d.dashboard?.summary?.mode_warning || '';
+        if (warningText) {
+            document.getElementById('mode-warning-text').innerText = warningText;
+            warningBanner.classList.remove('hidden');
+        } else {
+            warningBanner.classList.add('hidden');
+        }
+
+        ['SCANNING', 'SIGNAL', 'ACTIVE', 'CLOSED'].forEach(col => {
+            const el = document.getElementById('col-' + col);
+            if (!el) return;
+            el.innerHTML = '';
+            (d.dashboard?.kanban?.[col] || []).forEach(item => {
+                const card = document.createElement('div');
+                card.className = 'card ' + (item.side === 'BUY' ? 'card-buy' : item.side === 'SELL' ? 'card-sell' : '');
+                card.innerHTML = typeof item === 'string'
+                    ? `<b>${item}</b><br><small class="font-bold uppercase tracking-tighter" style="color:rgba(255,255,255,0.4);font-size:0.7rem;">Analyzing...</small>`
+                    : `<div class="flex justify-between font-bold"><span style="color:#e2e8f0;">${item.symbol}</span><span class="${item.side === 'BUY' ? 'text-emerald-400' : 'text-rose-400'}">${item.side}</span></div><div class="text-xs mt-2" style="color:rgba(255,255,255,0.4);">Entry: ₹${item.price || '—'} | Qty: ${item.quantity || ''}</div>`;
+                el.appendChild(card);
+            });
+        });
+    };
+    ws.onclose = () => { document.getElementById('status-mode').textContent = 'DISCONNECTED'; };
+
+    // Init
+    showTab('terminal');
     </script>
 </body>
 </html>

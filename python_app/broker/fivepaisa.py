@@ -164,9 +164,9 @@ class FivePaisaProvider(Broker):
             self.logger.error(f"5paisa Historical Data Error: {e}")
             return []
 
-    def place_order(self, order_details: Dict[str, Any]) -> str:
+    def place_order(self, order_details: Dict[str, Any]) -> Dict[str, Any]:
         if not self.authenticated:
-            return ""
+            return {"order_id": "", "status": "ERROR", "message": "Not authenticated"}
         try:
             payload = {
                 "head": {
@@ -199,11 +199,11 @@ class FivePaisaProvider(Broker):
             resp.raise_for_status()
             data = resp.json()
             if data.get("body", {}).get("OrderID"):
-                return str(data["body"]["OrderID"])
-            return ""
+                return {"order_id": str(data["body"]["OrderID"]), "status": "OPEN", "message": ""}
+            return {"order_id": "", "status": "REJECTED", "message": "No OrderID in 5paisa response"}
         except Exception as e:
             self.logger.error(f"5paisa Place Order Error: {e}")
-            return ""
+            return {"order_id": "", "status": "ERROR", "message": str(e)}
 
     def get_order_status(self, order_id: str) -> Dict[str, Any]:
         if not self.authenticated:

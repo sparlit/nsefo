@@ -121,9 +121,10 @@ class AxisDirectProvider(Broker):
             self.logger.error(f"Axis Direct Historical Data Error: {e}")
             return []
 
-    def place_order(self, order_details: Dict[str, Any]) -> str:
+    def place_order(self, order_details: Dict[str, Any]) -> Dict[str, Any]:
+        """Place a new order. Returns {"order_id": str, "status": str, "message": str}."""
         if not self.authenticated:
-            return ""
+            return {"order_id": "", "status": "ERROR", "message": "Not authenticated"}
         try:
             payload = {
                 "exchange": order_details.get("exchange", "NSE"),
@@ -146,11 +147,11 @@ class AxisDirectProvider(Broker):
             resp.raise_for_status()
             data = resp.json()
             if data.get("order_id"):
-                return str(data["order_id"])
-            return ""
+                return {"order_id": str(data["order_id"]), "status": "OPEN", "message": ""}
+            return {"order_id": "", "status": "REJECTED", "message": "No order_id in Axis Direct response"}
         except Exception as e:
             self.logger.error(f"Axis Direct Place Order Error: {e}")
-            return ""
+            return {"order_id": "", "status": "ERROR", "message": str(e)}
 
     def get_order_status(self, order_id: str) -> Dict[str, Any]:
         if not self.authenticated:

@@ -60,8 +60,8 @@ class FenixDhanProvider(Broker):
             self.logger.error(f"Fenix Historical Error: {e}")
             return []
 
-    def place_order(self, o: Dict[str, Any]) -> str:
-        if not self.api: return ""
+    def place_order(self, o: Dict[str, Any]) -> Dict[str, Any]:
+        if not self.api: return {"order_id": "", "status": "ERROR", "message": "Fenix API not initialized"}
         try:
             order = self.api.market_order(
                 security_id=o['security_id'],
@@ -69,10 +69,11 @@ class FenixDhanProvider(Broker):
                 side=o['side'],
                 quantity=o['quantity']
             )
-            return str(order.get('orderId', ''))
+            oid = str(order.get('orderId', ''))
+            return {"order_id": oid, "status": "OPEN", "message": ""}
         except Exception as e:
             self.logger.error(f"Fenix Order Error: {e}")
-            return ""
+            return {"order_id": "", "status": "ERROR", "message": str(e)}
 
     def get_order_status(self, order_id: str) -> Dict[str, Any]:
         try: return self.api.fetch_order(order_id)

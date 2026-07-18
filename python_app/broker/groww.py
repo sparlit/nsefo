@@ -87,21 +87,21 @@ class GrowwProvider(Broker):
             self.logger.error(f"Historical Data Error: {e}")
             return []
 
-    def place_order(self, order_details: Dict[str, Any]) -> str:
+    def place_order(self, order_details: Dict[str, Any]) -> Dict[str, Any]:
         if not _HAS_HTTPX:
             self.logger.error("httpx not installed")
-            return ""
+            return {"order_id": "", "status": "ERROR", "message": "httpx not installed"}
         try:
             resp = self._get_client().post("/orders", json=order_details)
             resp.raise_for_status()
             data = resp.json()
             if data.get("status", "").lower() == "success":
-                return str(data.get("data", {}).get("order_id", ""))
-            self.logger.warning(f"Order Rejected: {data.get('remarks', '')}")
-            return ""
+                oid = str(data.get("data", {}).get("order_id", ""))
+                return {"order_id": oid, "status": "OPEN", "message": ""}
+            return {"order_id": "", "status": "REJECTED", "message": data.get('remarks', 'Order rejected')}
         except Exception as e:
             self.logger.error(f"Order failure: {e}")
-            return ""
+            return {"order_id": "", "status": "ERROR", "message": str(e)}
 
     def get_order_status(self, order_id: str) -> Dict[str, Any]:
         if not _HAS_HTTPX:

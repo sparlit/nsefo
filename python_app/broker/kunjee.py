@@ -102,8 +102,8 @@ class KunjeeProvider(Broker):
             self.logger.error(f"Historical Data Error: {e}")
             return []
 
-    def place_order(self, order_details: Dict[str, Any]) -> str:
-        """Place a new order. Returns order_id string."""
+    def place_order(self, order_details: Dict[str, Any]) -> Dict[str, Any]:
+        """Place a new order. Returns {"order_id": str, "status": str, "message": str}."""
         try:
             payload = {
                 "exchange": order_details.get("exchange_segment", "NSE"),
@@ -123,12 +123,12 @@ class KunjeeProvider(Broker):
             )
             if resp.status_code in (200, 201):
                 data = resp.json()
-                return str(data.get("order_id", data.get("orderId", "")))
-            self.logger.warning(f"Order failed: {resp.status_code}")
-            return ""
+                oid = str(data.get("order_id", data.get("orderId", "")))
+                return {"order_id": oid, "status": "OPEN", "message": ""}
+            return {"order_id": "", "status": "REJECTED", "message": f"HTTP {resp.status_code}"}
         except Exception as e:
             self.logger.error(f"Order Error: {e}")
-            return ""
+            return {"order_id": "", "status": "ERROR", "message": str(e)}
 
     def get_order_status(self, order_id: str) -> Dict[str, Any]:
         """Get order status by order_id."""

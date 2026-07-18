@@ -116,9 +116,10 @@ class KotakProvider(Broker):
             self.logger.error(f"Kotak Historical Data Error: {e}")
             return []
 
-    def place_order(self, order_details: Dict[str, Any]) -> str:
+    def place_order(self, order_details: Dict[str, Any]) -> Dict[str, Any]:
+        """Returns {"order_id": str, "status": str, "message": str}."""
         if not self.authenticated:
-            return ""
+            return {"order_id": "", "status": "ERROR", "message": "Not authenticated"}
         try:
             payload = {
                 "exchange": order_details.get("exchange", "NSE"),
@@ -140,11 +141,11 @@ class KotakProvider(Broker):
             resp.raise_for_status()
             data = resp.json()
             if data.get("order_id"):
-                return str(data["order_id"])
-            return ""
+                return {"order_id": str(data["order_id"]), "status": "OPEN", "message": ""}
+            return {"order_id": "", "status": "ERROR", "message": "No order_id in Kotak response"}
         except Exception as e:
             self.logger.error(f"Kotak Place Order Error: {e}")
-            return ""
+            return {"order_id": "", "status": "ERROR", "message": str(e)}
 
     def get_order_status(self, order_id: str) -> Dict[str, Any]:
         if not self.authenticated:
