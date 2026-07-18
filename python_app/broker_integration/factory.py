@@ -363,6 +363,15 @@ class BrokerFactory:
                 f"Supported: {sorted(PROVIDER_REGISTRY.keys())}"
             )
 
+        # Refuse to instantiate a non-stub provider with an empty base_url.
+        # This catches misconfigured entries (e.g. kotak_neo stub with base_url="") that
+        # would silently produce broken HTTP requests.
+        if entry.api_status != "stub" and not entry.base_url.strip():
+            raise ValueError(
+                f"Provider {provider_key!r} has no base_url configured. "
+                f"Set a valid API base URL or use a different provider."
+            )
+
         kw = dict(
             client_id=client_id,
             access_token=access_token,
@@ -402,6 +411,11 @@ class BrokerFactory:
                 raise ValueError(
                     f"Unknown provider {provider_key!r}. "
                     f"Supported: {sorted(k for k in PROVIDER_REGISTRY if k != 'paper')}"
+                )
+            if entry.api_status != "stub" and not entry.base_url.strip():
+                raise ValueError(
+                    f"Provider {provider_key!r} has no base_url configured. "
+                    f"Set a valid API base URL or use a different provider."
                 )
 
             all_keys = dict(

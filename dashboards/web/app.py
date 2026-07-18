@@ -25,6 +25,11 @@ _rate_limit_window = 60.0
 _rate_limit_max = 60
 _rate_limit_store: Dict[str, List[float]] = {}
 
+# ── Brute-force auth lockout ─────────────────────────────────────────────────
+_auth_lockout_store: Dict[str, float] = {}   # IP → lockout expiry timestamp
+_AUTH_MAX_FAILURES = 5
+_AUTH_LOCKOUT_DURATION = 300.0   # 5 minutes
+
 
 @app.middleware("http")
 async def _broker_rate_limit_middleware(request: Request, call_next):
@@ -106,7 +111,37 @@ def _get_engine():
 
 # ── Auth dependency ────────────────────────────────────────────────────────────
 
+def _check_auth_lockout(client_ip: str) -> bool:
+    """Return True if IP is currently locked out due to auth failures."""
+    expiry = _auth_lockout_store.get(client_ip, 0.0)
+    if expiry == 0.0:
+        return False
+    if time.monotonic() > expiry:
+        _auth_lockout_store.pop(client_ip, None)
+        return False
+    return True
+
+
+def _record_auth_failure(client_ip: str) -> None:
+    """Record a failed auth attempt. After _AUTH_MAX_FAILURES, lock out for _AUTH_LOCKOUT_DURATION."""
+    failures = _failed_auth_store.get(client_ip, 0) + 1
+    _failed_auth_store[client_ip] = failures
+    if failures >= _AUTH_MAX_FAILURES:
+        _auth_lockout_store[client_ip] = time.monotonic() + _AUTH_LOCKOUT_DURATION
+        _failed_auth_store.pop(client_ip, None)   # reset counter after lockout set
+
+
+def _clear_auth_failure(client_ip: str) -> None:
+    """Clear failed-auth counter on successful auth."""
+    _failed_auth_store.pop(client_ip, None)
+
+
+# Track consecutive auth failures per IP (reset on success)
+_failed_auth_store: Dict[str, int] = {}
+
+
 async def verify_dashboard_secret(
+    request: Request,
     secret: Optional[str] = Header(None, alias="X-NSEFO-SECRET"),
 ) -> str:
     """
@@ -115,8 +150,25 @@ async def verify_dashboard_secret(
     If NSEFO_DASHBOARD_SECRET is not set in the environment, the dashboard
     is in "open mode" — auth is disabled and a warning is logged.
 
+    Progressive lockout after 5 failed attempts: 5-minute cooldown.
+
     Returns the validated secret so callers can distinguish "open" from "authenticated".
     """
+    # Determine client IP (respecting X-Forwarded-For only from trusted proxies)
+    client_host = request.client.host if request.client else "unknown"
+    is_trusted_proxy = client_host in ("127.0.0.1", "::1", "localhost") or _is_private_ip(client_host)
+    if is_trusted_proxy and "x-forwarded-for" in request.headers:
+        client_ip = request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+    else:
+        client_ip = client_host
+
+    if _check_auth_lockout(client_ip):
+        raise HTTPException(
+            status_code=429,
+            detail="Too many authentication failures. Try again in 5 minutes.",
+            headers={"Retry-After": "300"},
+        )
+
     expected = _secrets.dashboard_secret()
     if expected is None:
         # Auth not configured — log and permit (open mode for dev)
@@ -127,10 +179,12 @@ async def verify_dashboard_secret(
         )
         return "open"
     if secret != expected:
+        _record_auth_failure(client_ip)
         raise HTTPException(
             status_code=401,
             detail="Invalid or missing X-NSEFO-SECRET header.",
         )
+    _clear_auth_failure(client_ip)
     return secret
 
 
@@ -283,24 +337,53 @@ async def websocket_endpoint(websocket: WebSocket):
     """
     WebSocket feed — authenticate via ?secret= query param on first connect.
     Falls back to open if NSEFO_DASHBOARD_SECRET is not set.
+
+    Records auth failures and applies progressive lockout (5 failures → 5-min cooldown).
     """
-    expected = _secrets.dashboard_secret()
+    # Get client IP for lockout tracking
+    client_host = websocket.client and websocket.client.host or "unknown"
+    is_trusted = client_host in ("127.0.0.1", "::1", "localhost") or _is_private_ip(client_host)
+    if is_trusted and "x-forwarded-for" in websocket.headers:
+        client_ip = websocket.headers.get("x-forwarded-for", "").split(",")[0].strip()
+    else:
+        client_ip = client_host
+
     await websocket.accept()
 
+    expected = _secrets.dashboard_secret()
     if expected is not None:
         try:
             first_msg = await websocket.receive_json()
-            if first_msg.get("secret") != expected:
+            if not isinstance(first_msg, dict) or first_msg.get("secret") != expected:
+                _record_auth_failure(client_ip)
                 await websocket.close(code=4001, reason="Invalid secret")
                 return
+            _clear_auth_failure(client_ip)
         except Exception:
+            _record_auth_failure(client_ip)
             await websocket.close(code=4001, reason="Auth required")
             return
 
+    if _check_auth_lockout(client_ip):
+        await websocket.close(code=4008, reason="Auth locked out — try again in 5 minutes")
+        return
+
     while True:
-        trade_engine = _get_engine()
+        # H1 fix: wrap engine init in try/except — send error state instead of crashing WS
+        try:
+            trade_engine = _get_engine()
+        except Exception as e:
+            import logging
+            logging.getLogger("dashboard").error("TradingApp init failed: %s", e)
+            await websocket.send_json({
+                "error": "trading_engine_init_failed",
+                "detail": "Failed to initialize trading engine — check configuration",
+            })
+            await asyncio.sleep(5.0)
+            continue
+
         sm = SessionManager(config_path=str(_BASE_DIR / "config.json"))
-        sm.get_broker()  # Ensure mode is resolved
+        sm.get_broker()
         actual_mode = sm.get_actual_mode()
 
         # Get active trades from global_state (sole source of truth)
@@ -314,9 +397,9 @@ async def websocket_endpoint(websocket: WebSocket):
             "summary": {
                 "capital": raw_cfg.get("risk", {}).get("capital", 0),
                 "active_trades_count": len(active_trades),
-                "mode": actual_mode["actual"],          # actual broker mode
-                "mode_configured": actual_mode["configured"],  # what user configured
-                "mode_warning": actual_mode["warning"],  # non-empty = danger alert
+                "mode": actual_mode["actual"],
+                "mode_configured": actual_mode["configured"],
+                "mode_warning": actual_mode["warning"],
             },
             "kanban": {
                 "SCANNING": trade_engine.watch_list,
@@ -327,7 +410,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
         await websocket.send_json({
             "dashboard": state,
-            "config": sanitized_cfg,  # Never send credentials over WS
+            "config": sanitized_cfg,
         })
         await asyncio.sleep(1.0)
 

@@ -514,30 +514,7 @@ class QuantitativeEngine:
         self._tick_count = 0
 
 
-# ─────────────────────────────────────────────
-# CLI smoke-test
-# ─────────────────────────────────────────────
-
-if __name__ == "__main__":
-    import time
-    import random
-
-    print("QuantitativeEngine smoke-test")
-    qe = QuantitativeEngine()
-    base_price = 24500.0
-
-    for i in range(100):
-        tick = Tick(
-            timestamp=time.time(),
-            price=base_price + random.uniform(-50, 50),
-            volume=random.randint(50, 500),
-            bid=base_price - 5 + random.uniform(-3, 3),
-            ask=base_price + 5 + random.uniform(-3, 3),
-        )
-        result = qe.update(tick)
-        if i % 20 == 0:
-            print(f"[{i:3d}] VWAP={result['vwap']:.2f}  VPIN={result['vpin']:.4f}  "
-                  f"spread={result['spread']['rel_spread_pct']:.4f}%  "
-                  f"regime={result['regime']['name']}  vol={result['regime']['volatility_ann_pct']:.1f}%")
-
-    print("Smoke-test passed — QuantitativeEngine is working.")
+# NOTE: QuantitativeEngine is not wired into TradingApp.run_market_cycle.
+# VWAP/VPIN/spread/regime are computed here but never fed into trade decisions.
+# To wire: call qe.update(tick) from broker market-data callbacks and use the
+# results in BrainEngine.analyze_symbol for regime-adaptive probability scaling.

@@ -1,0 +1,19 @@
+{
+    "client_id": "",
+    "access_token": "",
+    "totp_secret": "",
+    "api_key": "",
+    "refresh_token": "",
+    "client_secret": "",
+    "password": "",
+    "yob": "",
+    "mode": "paper",
+    "provider": "",
+    "target_frequency": "swing",
+    "data_provider": "",
+    "risk": {
+        "capital": 0,
+        "max_risk_per_trade_percent": 1.0,
+        "fixed_lots": 1
+    }
+}

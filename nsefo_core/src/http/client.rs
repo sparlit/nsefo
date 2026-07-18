@@ -5,9 +5,50 @@
 
 use pyo3::prelude::*;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
+use std::net::{IpAddr, ToSocketAddrs};
 use std::str::FromStr;
 use std::time::Duration;
 use url::Url;
+
+fn _validate_url(url: &Url) -> PyResult<()> {
+    // Reject non-HTTP(S) schemes — prevents file://, gopher://, dict:// etc.
+    match url.scheme() {
+        "http" | "https" => {}
+        _ => {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "unsupported URL scheme '{}' — only http/https allowed",
+                url.scheme()
+            )));
+        }
+    }
+
+    // Resolve host and reject loopback / private / link-local addresses.
+    // This prevents SSRF against internal services (metadata, admin panels, localhost).
+    if let Some(host_str) = url.host_str() {
+        // Try to parse as IP address directly
+        if let Ok(ip) = IpAddr::from_str(host_str) {
+            if ip.is_loopback() || ip.is_private() || ip.is_link_local() {
+                return Err(pyo3::exceptions::PyValueError::new_err(
+                    "SSRF blocked: cannot connect to private/reserved IP addresses",
+                ));
+            }
+        } else {
+            // It's a hostname — try to resolve it and check the resulting IPs.
+            // If resolution fails, allow the request (DNS may be down — let it fail naturally).
+            if let Ok(addrs) = (host_str, 80u16).to_socket_addrs() {
+                for addr in addrs {
+                    if addr.ip().is_loopback() || addr.ip().is_private() || addr.ip().is_link_local() {
+                        return Err(pyo3::exceptions::PyValueError::new_err(
+                            "SSRF blocked: hostname resolves to a private/reserved IP",
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
 
 // ─── PyO3 module-level functions ────────────────────────────────────────────
 
@@ -28,6 +69,9 @@ pub fn http_post(
     let parsed = Url::parse(url).map_err(|e| {
         pyo3::exceptions::PyValueError::new_err(format!("invalid URL: {}", e))
     })?;
+
+    // SSRF protection: reject private/loopback IPs and non-HTTP schemes
+    _validate_url(&parsed)?;
 
     let mut builder = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs_f64(timeout_secs))
@@ -64,9 +108,9 @@ pub fn http_post(
         Ok(body)
     } else {
         Err(pyo3::exceptions::PyRuntimeError::new_err(format!(
-            "HTTP {}: {}",
+            "HTTP {}: <{} bytes>",
             status.as_u16(),
-            body
+            body.len(),
         )))
     }
 }
@@ -86,6 +130,9 @@ pub fn http_get(
     let parsed = Url::parse(url).map_err(|e| {
         pyo3::exceptions::PyValueError::new_err(format!("invalid URL: {}", e))
     })?;
+
+    // SSRF protection: reject private/loopback IPs and non-HTTP schemes
+    _validate_url(&parsed)?;
 
     let mut builder = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs_f64(timeout_secs))
@@ -138,9 +185,9 @@ pub fn http_get(
         Ok(body)
     } else {
         Err(pyo3::exceptions::PyRuntimeError::new_err(format!(
-            "HTTP {}: {}",
+            "HTTP {}: <{} bytes>",
             status.as_u16(),
-            body
+            body.len(),
         )))
     }
 }

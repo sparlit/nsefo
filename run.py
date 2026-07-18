@@ -22,6 +22,14 @@ import os
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 os.environ["PYTHONPATH"] = PROJECT_ROOT + os.pathsep + os.environ.get("PYTHONPATH", "")
 
+# Load credentials from .env file (if present) before any app imports.
+# Secrets in .env take priority over config.json values.
+try:
+    from dotenv import load_dotenv
+    load_dotenv(PROJECT_ROOT + os.sep + ".env")
+except ImportError:
+    pass   # python-dotenv not installed — credentials come from config.json or env vars only
+
 
 # ── Stdlib imports ──────────────────────────────────────────────────────────
 import json
