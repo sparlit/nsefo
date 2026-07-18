@@ -1,4 +1,5 @@
 pub fn assess_winning_probability(indicators: Vec<f64>) -> f64 {
+    if indicators.is_empty() { return 0.5; }
     if indicators.len() < 2 { return 0.5; }
 
     // Weighting Scheme:

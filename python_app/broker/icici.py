@@ -143,7 +143,7 @@ class ICICIDirectProvider(Broker):
                     _json.dump(cfg, f, indent=4)
                 self.logger.info("Tokens updated in config.json.")
         except Exception as e:
-            self.logger.warning("Could not persist tokens to config.json: %s", e)
+            self.logger.error("Failed to persist tokens to config.json: %s — tokens will be lost on restart", e)
 
     def login(self, **kwargs) -> bool:
         """

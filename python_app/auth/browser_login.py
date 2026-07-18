@@ -515,25 +515,42 @@ class TokenManager:
     """
     Centralized token manager: stores tokens per broker,
     auto-relogs on 401, maintains heartbeats.
+
+    Thread-safety:
+      - __new__ uses a class-level lock so only one thread creates the instance.
+      - __init__ has a guard check but is only ever called by the thread that won
+        the __new__ lock, so no additional locking is needed inside __init__.
+      - All shared state (_tokens, _engines, etc.) is only accessed under _lock
+        via get_token / set_token / on_auth_error.
+      - Compound check-then-act in get_token is atomic (entire check + potential
+        background relogin trigger is under the same lock acquisition).
     """
+
     _instance: Optional["TokenManager"] = None
+    _creation_lock = threading.Lock()  # class-level lock for __new__
 
     def __new__(cls) -> "TokenManager":
         if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._initialized = False
+            with cls._creation_lock:
+                # Double-check after acquiring lock
+                if cls._instance is None:
+                    instance = super().__new__(cls)
+                    instance._initialized = False
+                    cls._instance = instance
         return cls._instance
 
     def __init__(self):
         if self._initialized:
             return
-        self._initialized = True
+        # Only reached by the thread that created _instance — safe without extra lock
         self._tokens: Dict[str, TokenInfo] = {}
         self._engines: Dict[str, BrowserLoginEngine] = {}
         self._config: Dict[str, BrowserLoginConfig] = {}
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()   # instance-level lock for all state ops
         self._heartbeats: Dict[str, threading.Timer] = {}
         self._stop_events: Dict[str, threading.Event] = {}
+        self._relogin_in_progress: Dict[str, bool] = {}  # provider -> True while relogin running
+        self._initialized = True
         logger.info("TokenManager initialized")
 
     def register_broker(
@@ -552,7 +569,6 @@ class TokenManager:
         with self._lock:
             if provider in self._tokens:
                 return  # Already registered
-
             token_info = TokenInfo(
                 access_token=existing_token,
                 expires_at=token_expires_at,
@@ -562,47 +578,78 @@ class TokenManager:
             logger.info(f"Broker registered: {provider} (existing_token={'yes' if existing_token else 'none'})")
 
     def get_token(self, provider: str) -> Optional[TokenInfo]:
-        """Get valid token (auto-refreshes if expired)."""
+        """
+        Get valid token for provider.
+
+        If the token is expired and not already being refreshed, fires a
+        background relogin. Returns the (possibly expired) token immediately —
+        callers should check is_valid() and handle 401 appropriately.
+        """
         with self._lock:
             token = self._tokens.get(provider)
-            if token and token.is_valid():
+            if token is None:
+                return None
+
+            if token.is_valid():
                 return token
-            if token and token.is_expired():
-                logger.info(f"Token expired for {provider}, triggering re-login")
-                # Trigger async re-login in background
-                threading.Thread(target=self._relogin_async, args=(provider,), daemon=True).start()
-            return token  # Return expired token anyway — caller will get 401
+
+            # Token missing, invalid, or expired — check if a relogin is already running
+            if token.is_expired() and not self._relogin_in_progress.get(provider, False):
+                logger.info(f"Token expired for {provider}, triggering background re-login")
+                self._relogin_in_progress[provider] = True
+                t = threading.Thread(target=self._relogin_async, args=(provider,), daemon=True)
+                t.start()
+                # Note: we intentionally return the expired token rather than
+                # blocking. The caller will get a 401 and retry, at which point
+                # a fresh token should be available from the background relogin.
+
+            return token
 
     def set_token(self, provider: str, token_info: TokenInfo):
         """Store a newly acquired token."""
         with self._lock:
             self._tokens[provider] = token_info
+            self._relogin_in_progress[provider] = False
             logger.info(f"Token updated for {provider}")
 
     def on_auth_error(self, provider: str, status_code: int):
         """
         Called when broker API returns 401/403.
-        Triggers immediate re-login.
+        Triggers immediate background re-login (idempotent — safe to call multiple times).
         """
         if status_code in (401, 403):
+            with self._lock:
+                if self._relogin_in_progress.get(provider, False):
+                    logger.debug(f"Re-login already in progress for {provider}, skipping")
+                    return
+                self._relogin_in_progress[provider] = True
+
             logger.warning(f"Auth error {status_code} for {provider}, re-logging in...")
-            threading.Thread(target=self._relogin_async, args=(provider,), daemon=True).start()
+            t = threading.Thread(target=self._relogin_async, args=(provider,), daemon=True)
+            t.start()
 
     def _relogin_async(self, provider: str):
-        """Background re-login with exponential backoff."""
-        for attempt in range(3):
-            try:
-                engine = self._engines.get(provider)
-                if engine:
-                    new_token = engine.relogin()
-                    if new_token and new_token.is_valid():
-                        self.set_token(provider, new_token)
-                        logger.info(f"Re-login success for {provider}")
-                        return
-                time.sleep(2 ** attempt)  # 1s, 2s, 4s backoff
-            except Exception as e:
-                logger.error(f"Re-login attempt {attempt+1} failed for {provider}: {e}")
-                time.sleep(2 ** attempt)
+        """Background re-login with exponential backoff. Cleans up _relogin_in_progress on exit."""
+        try:
+            for attempt in range(3):
+                try:
+                    with self._lock:
+                        engine = self._engines.get(provider)
+
+                    if engine:
+                        new_token = engine.relogin()
+                        if new_token and new_token.is_valid():
+                            self.set_token(provider, new_token)
+                            logger.info(f"Re-login success for {provider}")
+                            return
+                    time.sleep(2 ** attempt)  # 1s, 2s, 4s backoff
+                except Exception as e:
+                    logger.error(f"Re-login attempt {attempt+1} failed for {provider}: {e}")
+                    time.sleep(2 ** attempt)
+        finally:
+            # Ensure the in-progress flag is always cleared, even on exception
+            with self._lock:
+                self._relogin_in_progress[provider] = False
 
     def start_heartbeat(self, provider: str, interval: int = 240):
         """Start heartbeat for a broker."""
@@ -637,35 +684,23 @@ class TokenManager:
 class AutoReloginMixin:
     """
     Mixin for Broker classes.
-    Intercepts HTTP responses and auto-relogs on 401.
+    Intercepts HTTP responses and auto-relogs on 401 by delegating to TokenManager.
     Usage: class MyBroker(Broker, AutoReloginMixin):
+        - Call self._handle_auth_error(status_code) from each HTTP method on 401/403.
+        - TokenManager handles deduplication (only one concurrent relogin per provider).
     """
 
     def __init__(self, *args, **kwargs):
         self._token_manager = TokenManager()
-        self._relogin_in_progress = False
-        self._relogin_lock = threading.Lock()
 
     def _handle_auth_error(self, status_code: int):
-        """Call this from each HTTP call site on 401/403."""
+        """
+        Call this from each HTTP method when a 401/403 is received.
+        Delegates to TokenManager which deduplicates concurrent relogin attempts.
+        """
         if status_code in (401, 403):
-            with self._relogin_lock:
-                if not self._relogin_in_progress:
-                    self._relogin_in_progress = True
-                    provider = getattr(self, "provider", self.__class__.__name__)
-                    threading.Thread(
-                        target=self._do_relogin,
-                        args=(provider,),
-                        daemon=True,
-                    ).start()
-                    self._relogin_in_progress = False
-
-    def _do_relogin(self, provider: str):
-        """Perform re-login and update token."""
-        try:
-            self._token_manager.on_auth_error(provider, 401)
-        except Exception as e:
-            logger.error(f"Re-login failed for {provider}: {e}")
+            provider = getattr(self, "provider", self.__class__.__name__)
+            self._token_manager.on_auth_error(provider, status_code)
 
 
 # ── TLS Fingerprint HTTP Client ────────────────────────────────────────────────

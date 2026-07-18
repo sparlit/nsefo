@@ -124,6 +124,7 @@ def get_credentials(existing_cfg):
             ("mstock", "mStock (Mirae Asset)"),
         ]
         print("\nSupported Brokers:")
+
     for i, (key, label) in enumerate(providers, 1):
         print(f"  {i:2d}. {label}")
     print()
@@ -215,7 +216,7 @@ def get_credentials(existing_cfg):
         fixed_lots = 1
 
     return {
-        "mode": mode.lower() in ("live", "paper") and mode.lower() or "paper",
+        "mode": mode.lower() if mode.lower() in ("live", "paper") else "paper",
         "client_id": client_id,
         "access_token": access_token,
         "totp_secret": totp_secret,

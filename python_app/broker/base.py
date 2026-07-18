@@ -22,7 +22,11 @@ def _get_token_manager():
 
 def mark_abstract(func):
     """Mark a function as abstract for test compatibility."""
+    # Set on the raw function so getattr through @abstractmethod descriptor finds it
     func.__is_abstract__ = True
+    # Also set on __func__ if @abstractmethod wrapped it (descriptor protocol)
+    if hasattr(func, '__func__'):
+        func.__func__.__is_abstract__ = True
     return func
 
 
@@ -88,6 +92,8 @@ class Broker(ABC):
         __is_abstract__ = True
         raise NotImplementedError
 
+    @mark_abstract
+    @abstractmethod
     def place_order(self, order_details: Dict[str, Any]) -> Dict[str, Any]:
         """
         Place an order. Subclasses must override.
@@ -98,6 +104,7 @@ class Broker(ABC):
         Empty string "" is accepted for backwards compatibility but normalised
         by the caller (coordinator) into {"order_id": "", "status": "ERROR", "message": ...}.
         """
+        __is_abstract__ = True
         raise NotImplementedError
 
     @mark_abstract

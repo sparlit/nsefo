@@ -40,3 +40,5 @@ test_*.py
 # Misc
 *.tmp
 *.bak
+!config.json.example
+brokers.db

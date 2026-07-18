@@ -127,7 +127,7 @@ The parser returns: `{action, symbol, strike, option_type, raw}`
 
 **Web (FastAPI + WebSocket):**
 - `dashboards/web/app.py` — FastAPI app with `/config`, `/config` (POST), and `/ws` WebSocket endpoints
-- `dashboards/web/static/index.html` — Single-page Kanban UI with TailwindCSS and a JS WebSocket client
+- `dashboards/web/static/index.html` — Single-page Kanban UI with TailwindCSS, two-sub-tab Settings panel (Connection + Risk Management), JS WebSocket client, and sensitive-credential env-var-only design
 - Port 9099, launched by `start_master_pro.py` via `uvicorn`
 
 **Desktop (PySide6):**

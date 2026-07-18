@@ -132,16 +132,16 @@ def _strip_sensitive(data: Dict[str, Any]) -> Dict[str, Any]:
 # Database singleton (lazily created per worker process)
 # ------------------------------------------------------------------
 
-_db: Optional[DatabaseManager] = None
+_db_instance: Optional[DatabaseManager] = None
 
 
 def _db() -> DatabaseManager:
-    global _db
-    if _db is None:
+    global _db_instance
+    if _db_instance is None:
         db_path = os.environ.get("NSEFO_BROKER_DB", "brokers.db")
-        _db = DatabaseManager(db_path)
+        _db_instance = DatabaseManager(db_path)
         logger.info("BrokerDatabase initialised at %s", db_path)
-    return _db
+    return _db_instance
 
 
 # ------------------------------------------------------------------
@@ -162,7 +162,7 @@ async def health() -> JSONResponse:
             "stats_rows": stats_count,
         })
     except Exception as e:
-        return JSONResponse({"status": "degraded", "error": str(e)}, status_code=503)
+        return JSONResponse({"status": "degraded", "error": "service unavailable — check logs"}, status_code=503)
 
 
 # ==================================================================
@@ -659,7 +659,10 @@ async def import_from_csv(
     try:
         decoded = content.decode("utf-8-sig")
     except UnicodeDecodeError:
-        decoded = content.decode("latin-1")
+        return JSONResponse(
+            {"error": "invalid_encoding", "detail": "CSV file must be UTF-8 encoded"},
+            status_code=422,
+        )
 
     reader = _csv.DictReader(_io.StringIO(decoded))
     rows = list(reader)

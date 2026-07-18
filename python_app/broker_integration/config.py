@@ -73,7 +73,8 @@ class BrokerConfig:
     }
 
     def __init__(self, config_path: str = "config.json"):
-        self.config_path = config_path
+        from pathlib import Path
+        self.config_path = Path(config_path).resolve()
         self._raw: Dict[str, Any] = self._load()
         self._dirty = False
 

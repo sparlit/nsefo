@@ -623,7 +623,9 @@ def _populate_live_keys():
     try:
         from python_app.broker_integration.factory import PROVIDER_REGISTRY
         _LIVE_PROVIDER_KEYS = set(PROVIDER_REGISTRY.keys())
-    except Exception:
+    except Exception as exc:
+        import logging
+        logging.warning("Could not populate live broker keys — registry may be incomplete: %s", exc)
         _LIVE_PROVIDER_KEYS = set()
 
 

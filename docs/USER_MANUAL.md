@@ -118,14 +118,15 @@ The web dashboard has two tabs:
 - **ACTIVE**: Open positions with current P&L and trailing stop-loss status
 - **CLOSED**: Completed trades for the session
 
-**Configuration Tab**: Live editing of `config.json` fields:
-- Trading mode (paper/live)
-- Dhan Client ID
-- API Access Token
-- Initial capital
-- Fixed lot size
+**Configuration Tab**: Split into two sub-tabs:
 
-Changes take effect on page reload.
+- **Connection**: Broker provider, trading mode, connection test, and credentials split into two groups:
+  - *Broker Identity* (saved via API): Client ID, Consumer Key, broker-specific fields
+  - *Sensitive Credentials* (🔒 env vars only — not persisted): Password, API Key, API Secret, Access Token, TOTP Secret
+
+- **Risk Management**: Operational capital, max risk per trade %, fixed lot count, daily max loss, target frequency
+
+Changes take effect on page reload. Sensitive credentials (password, TOTP, API keys) cannot be saved from the browser — set them as environment variables instead.
 
 ### Desktop Terminal (PySide6)
 
@@ -146,7 +147,7 @@ Launch from the web terminal or when `start_master_pro.py` detects PySide6 is av
 |-----------|----------|--------|
 | `risk.capital` | `config.json` or Config tab | Denominator for risk % calculations |
 | `risk.fixed_lots` | `config.json` or Config tab | Strictly enforced quantity divisor |
-| `risk.max_risk_per_trade_percent` | `config.json` only | Max loss as % of capital per trade (default 1%) |
+| `risk.max_risk_per_trade_percent` | `config.json` or Risk Management sub-tab | Max loss as % of capital per trade (default 1%) |
 
 ### Risk Calculation
 

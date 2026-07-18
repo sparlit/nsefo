@@ -14,12 +14,12 @@ opengreeks
 fenix
 pycryptodome
 requests-oauthlib
-selenium
+selenium>=4.26.0
 trio
-trio-websocket
-websocket-client
+trio-websocket>=0.7.0
+websocket-client>=1.8.0
 playwright
 curl_cffi
-python-dotenv
+python-dotenv>=1.2.2
 pytest
 pytest-asyncio

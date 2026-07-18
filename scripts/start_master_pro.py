@@ -91,7 +91,7 @@ def run_gui(cfg=None):
     """
     Start the full GUI application:
       - TradingApp (broker login + market cycle)
-      - Web dashboard (uvicorn, port 9099)
+      - Web dashboard (uvicorn, port 8899)
       - PySide6 desktop window
 
     Args:
@@ -117,7 +117,7 @@ def run_gui(cfg=None):
         print("Run: python run.py --setup   (Linux: ./run.py --setup)")
         sys.exit(1)
 
-    # Web dashboard (port 9099) is launched by run.py before run_gui() is called.
+    # Web dashboard (port 8899) is launched by run.py before run_gui() is called.
     # Do NOT start it here to avoid port conflicts.
 
     # Start market cycle in background thread
@@ -125,7 +125,7 @@ def run_gui(cfg=None):
     threading.Thread(target=app.start, daemon=True).start()
 
     print("\n[SUCCESS] MASTER PRO IS LIVE")
-    print("  Web Console  : http://localhost:9099")
+    print("  Web Console  : http://localhost:8899")
 
     # Launch PySide6 desktop window — blocks until app closes
     try:
@@ -137,7 +137,7 @@ def run_gui(cfg=None):
         sys.exit(qt_app.exec())
     except ImportError:
         print("[INFO] PySide6 not installed — running in headless mode.")
-        print("[INFO] Web Console available at: http://localhost:9099")
+        print("[INFO] Web Console available at: http://localhost:8899")
         print("Press Ctrl+C to terminate.")
         while True:
             time.sleep(1)
