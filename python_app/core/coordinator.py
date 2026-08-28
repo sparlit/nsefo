@@ -147,7 +147,10 @@ class Coordinator:
         """
         symbol = trade["symbol"]
         side = trade["side"]
-        qty = trade["qty"]
+        # Accept both 'quantity' and 'qty' for backwards compatibility
+        qty = trade.get("quantity") or trade.get("qty")
+        if not qty:
+            raise ValueError("Trade must include 'quantity' or 'qty' field")
         price = trade["price"]
 
         # ── Build base idempotency key (stable across retries) ───────────────
@@ -221,7 +224,7 @@ class Coordinator:
                     "symbol": symbol,
                     "side": side,
                     "price": price,
-                    "qty": qty,
+                    "quantity": qty,
                     "order_id": order_id,
                     "entry_time": time.time(),
                     "stop_loss": trade.get("stop_loss"),
@@ -354,7 +357,7 @@ class Coordinator:
             symbol = trade["symbol"]
             side = trade["side"]
             entry_price = trade["price"]
-            qty = trade["qty"]
+            qty = trade["quantity"]
             stop_loss = trade.get("stop_loss")
             target = trade.get("target")
         
