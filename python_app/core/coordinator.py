@@ -801,11 +801,20 @@ class Coordinator:
                         # Handle both direct format and wrapped format
                         # Master Trust and similar brokers return {"data": {security_id: {...}}}
                         # where security_id is the key used in the request, not the symbol name
-                        if "data" in ltp_data and isinstance(ltp_data["data"], dict):
-                            # Look up by security_id (the key used in request), not symbol
-                            market_price = ltp_data["data"].get(security_id, {}).get("last_price", 0)
+                        if "data" in ltp_data:
+                            # Wrapped format: extract from data wrapper
+                            if isinstance(ltp_data["data"], dict):
+                                # Look up by security_id (the key used in request), not symbol
+                                market_price = ltp_data["data"].get(security_id, {}).get("last_price", 0)
+                            else:
+                                # data exists but is not a dict (error case) - log and skip
+                                logger.warning(
+                                    f"Unexpected market data format for {symbol}: 'data' key exists but value is not a dict. "
+                                    f"Type: {type(ltp_data['data'])}. Skipping protective exit checks for this cycle."
+                                )
+                                market_price = 0
                         else:
-                            # Fallback for brokers that return flat structure
+                            # Fallback for brokers that return flat structure (no "data" wrapper)
                             market_price = ltp_data.get(security_id, {}).get("last_price", 0)
 
                     if not market_price:
