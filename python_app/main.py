@@ -210,7 +210,7 @@ class TradingApp:
                 report["reason"] = margin_check["recommendation"]
                 return report
 
-            if auto_confirm_trade(data, recommend_action="YES"):
+            if auto_confirm_trade(data):
                 proposal = {
                     'security_id': sid, 'exchange_segment': 'NSE_FNO',
                     'symbol': symbol, 'side': data['action'],

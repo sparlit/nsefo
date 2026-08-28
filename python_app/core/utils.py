@@ -140,7 +140,7 @@ def timed_input_explicit(prompt: str, timeout: int = 10) -> Optional[str]:
     
     return result[0]
 
-def auto_confirm_trade(trade_details: Any, recommend_action: str = "YES") -> bool:
+def auto_confirm_trade(trade_details: Any) -> bool:
     """
     Prompts for explicit trade confirmation with a timeout.
     
@@ -158,25 +158,15 @@ def auto_confirm_trade(trade_details: Any, recommend_action: str = "YES") -> boo
     running in environments where stdin is unavailable cannot accidentally authorize
     live trades.
     
-    IMPORTANT: The recommend_action parameter is COMPLETELY IGNORED and has no effect
-    on the authorization decision. It is retained only for backward API compatibility.
     The function will NEVER use a default value for authorization - explicit user input
     of "YES" or "Y" is the ONLY way to authorize a trade.
     
     Args:
         trade_details: Trade information to display to the user
-        recommend_action: IGNORED. Has no effect. Kept only for API compatibility.
-                         Do not rely on this parameter for any behavior.
         
     Returns:
         bool: True only if user explicitly entered "YES" or "Y", False otherwise
     """
-    # Explicitly log if caller provided a non-default recommend_action to detect misuse
-    if recommend_action != "YES":
-        logger.warning(
-            f"auto_confirm_trade called with recommend_action='{recommend_action}'. "
-            "This parameter is ignored. Only explicit user input authorizes trades."
-        )
     print(f"\n{'='*60}")
     print(f"TRADE CONFIRMATION REQUIRED")
     print(f"{'='*60}")
