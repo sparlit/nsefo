@@ -70,9 +70,10 @@ def mock_broker_with_position():
 # ── RiskManager fixtures ─────────────────────────────────────────────────────
 
 @pytest.fixture
-def risk_manager_defaults(mock_broker):
-    """RiskManager with conservative test defaults."""
+def risk_manager_defaults(mock_broker, tmp_path):
+    """RiskManager with conservative test defaults and isolated state file."""
     from python_app.core.risk_manager import RiskManager
+    import os
 
     rm = RiskManager(
         capital=1_000_000.0,
@@ -80,13 +81,25 @@ def risk_manager_defaults(mock_broker):
         max_consecutive_losses=3,
         daily_max_loss_pct=0.05,
     )
-    return rm
+    # Use isolated state file for tests
+    test_state_file = str(tmp_path / "test_cb_defaults.json")
+    rm.cb._state_file = test_state_file
+    if os.path.exists(test_state_file):
+        os.remove(test_state_file)
+    rm.cb._save_state()
+    
+    yield rm
+    
+    # Cleanup
+    if os.path.exists(test_state_file):
+        os.remove(test_state_file)
 
 
 @pytest.fixture
-def risk_manager_aggressive(mock_broker_with_cash):
+def risk_manager_aggressive(mock_broker_with_cash, tmp_path):
     """RiskManager with aggressive (5%) risk settings for edge-case tests."""
     from python_app.core.risk_manager import RiskManager
+    import os
 
     rm = RiskManager(
         capital=1_000_000.0,
@@ -94,22 +107,49 @@ def risk_manager_aggressive(mock_broker_with_cash):
         max_consecutive_losses=5,
         daily_max_loss_pct=0.10,
     )
-    return rm
+    # Use isolated state file for tests
+    test_state_file = str(tmp_path / "test_cb_aggressive.json")
+    rm.cb._state_file = test_state_file
+    if os.path.exists(test_state_file):
+        os.remove(test_state_file)
+    rm.cb._save_state()
+    
+    yield rm
+    
+    # Cleanup
+    if os.path.exists(test_state_file):
+        os.remove(test_state_file)
 
 
 # ── CircuitBreakerState fixture ───────────────────────────────────────────────
 
 @pytest.fixture
-def fresh_circuit_breaker():
-    """A fresh CircuitBreakerState with capital=1_000_000."""
+def fresh_circuit_breaker(tmp_path):
+    """A fresh CircuitBreakerState with capital=1_000_000 and isolated state file."""
     from python_app.core.risk_manager import CircuitBreakerState
-
+    import os
+    
+    # Use a temporary state file for tests to avoid polluting the real state
+    test_state_file = str(tmp_path / "test_circuit_breaker_state.json")
+    
     cb = CircuitBreakerState(
         capital=1_000_000.0,
         max_consecutive_losses=3,
         daily_max_loss_pct=0.05,
     )
-    return cb
+    # Override the state file path for this test instance
+    cb._state_file = test_state_file
+    
+    # Clean up any existing state and start fresh
+    if os.path.exists(test_state_file):
+        os.remove(test_state_file)
+    cb._save_state()
+    
+    yield cb
+    
+    # Cleanup after test
+    if os.path.exists(test_state_file):
+        os.remove(test_state_file)
 
 
 # ── Coordinator fixtures ─────────────────────────────────────────────────────
@@ -152,6 +192,7 @@ def coordinator(risk_manager_defaults, mock_broker):
     coord = Coordinator(
         broker=mock_broker,
         risk_manager=risk_manager_defaults,
+        reconcile_positions=False,  # Disable reconciliation in tests
     )
     return coord
 
