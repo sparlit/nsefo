@@ -17,17 +17,18 @@ class BajajFinancialProvider(Broker):
     Docs: https://api.bajajfinservsecurities.in
     """
 
-    def __init__(self, api_key: str, client_id: str, access_token: str):
+    def __init__(self, api_key: str, client_id: str, access_token: str, verify_ssl: bool = True):
         self.api_key = api_key
         self.client_id = client_id
         self.access_token = access_token
+        self.verify_ssl = verify_ssl
         self.base_url = "https://api.bajajfinservsecurities.in"
         self.logger = logging.getLogger("BajajFinancialProvider")
         self.client = None
 
     def _get_client(self) -> httpx.Client:
         if self.client is None:
-            verify = certifi.where() if _HAS_CERTIFI else False
+            verify = certifi.where() if _HAS_CERTIFI and self.verify_ssl else self.verify_ssl
             self.client = httpx.Client(
                 base_url=self.base_url,
                 headers={
