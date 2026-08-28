@@ -1,32 +1,118 @@
+import json
 import logging
+import os
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
+from datetime import datetime, date
 from decimal import Decimal, ROUND_HALF_UP
+from pathlib import Path
 from typing import Dict, Any, Optional, List
 
 if False:
     from python_app.broker.base import Broker
 
+logger = logging.getLogger(__name__)
+
 
 @dataclass
 class CircuitBreakerState:
     """
-    Persists across the trading session (not across restarts).
-    Reset by calling reset_day() at session start or after a cooldown.
+    Circuit breaker state with persistent storage across restarts.
+    
+    State is saved to circuit_breaker_state.json after each trade.
+    On initialization, state is restored if it's from the same trading day.
+    Automatic reset occurs only when a new trading day is detected.
     """
     consecutive_losses: int = 0
     last_trade_result: Optional[str] = None   # "win" | "loss" | None
     session_pnl: float = 0.0
     session_trades: int = 0
     session_start_time: float = field(default_factory=time.time)
+    session_date: str = field(default_factory=lambda: date.today().isoformat())
     # Config (set via RiskManager.__init__)
     max_consecutive_losses: int = 3
     daily_max_loss_pct: float = 0.05          # 5% of capital
     capital: float = 1_000_000.0
     _tripped: bool = False
+    _state_file: str = field(default="circuit_breaker_state.json", init=False, repr=False)
+
+    def __post_init__(self):
+        """Load persisted state if available and from the same trading day."""
+        self._load_state()
+
+    def _load_state(self) -> None:
+        """
+        Load circuit breaker state from disk if it exists and is from today.
+        If state is from a previous day, automatically reset for new session.
+        """
+        if not os.path.exists(self._state_file):
+            logger.info("No persisted circuit breaker state found - starting fresh")
+            self._save_state()
+            return
+        
+        try:
+            with open(self._state_file, 'r') as f:
+                data = json.load(f)
+            
+            saved_date = data.get('session_date', '')
+            today = date.today().isoformat()
+            
+            if saved_date != today:
+                logger.info(
+                    f"Circuit breaker state is from {saved_date}, today is {today}. "
+                    "Resetting for new trading day."
+                )
+                self.reset_day()
+                return
+            
+            # Restore state from same trading day
+            self.consecutive_losses = data.get('consecutive_losses', 0)
+            self.last_trade_result = data.get('last_trade_result')
+            self.session_pnl = data.get('session_pnl', 0.0)
+            self.session_trades = data.get('session_trades', 0)
+            self.session_start_time = data.get('session_start_time', time.time())
+            self.session_date = saved_date
+            self._tripped = data.get('_tripped', False)
+            
+            logger.info(
+                f"Restored circuit breaker state from {saved_date}: "
+                f"{self.consecutive_losses} consecutive losses, "
+                f"session P&L: {self.session_pnl:.2f}, "
+                f"trades: {self.session_trades}, "
+                f"tripped: {self._tripped}"
+            )
+            
+        except Exception as e:
+            logger.error(f"Failed to load circuit breaker state: {e}. Starting fresh.")
+            self._save_state()
+
+    def _save_state(self) -> None:
+        """Persist current circuit breaker state to disk."""
+        try:
+            state_data = {
+                'consecutive_losses': self.consecutive_losses,
+                'last_trade_result': self.last_trade_result,
+                'session_pnl': self.session_pnl,
+                'session_trades': self.session_trades,
+                'session_start_time': self.session_start_time,
+                'session_date': self.session_date,
+                '_tripped': self._tripped,
+                'saved_at': datetime.now().isoformat(),
+            }
+            
+            # Atomic write: write to temp file, then rename
+            temp_file = f"{self._state_file}.tmp"
+            with open(temp_file, 'w') as f:
+                json.dump(state_data, f, indent=2)
+            os.replace(temp_file, self._state_file)
+            
+            logger.debug(f"Circuit breaker state saved: {state_data}")
+            
+        except Exception as e:
+            logger.error(f"Failed to save circuit breaker state: {e}")
 
     def record_trade(self, pnl: float) -> None:
-        """Update state after a trade closes."""
+        """Update state after a trade closes and persist to disk."""
         self.session_pnl += pnl
         self.session_trades += 1
         if pnl < 0:
@@ -35,6 +121,9 @@ class CircuitBreakerState:
         else:
             self.consecutive_losses = 0
             self.last_trade_result = "win"
+        
+        # Persist state after each trade
+        self._save_state()
 
     @property
     def daily_loss_pct(self) -> float:
@@ -52,20 +141,25 @@ class CircuitBreakerState:
             return True
         if self.consecutive_losses >= self.max_consecutive_losses:
             self._tripped = True
+            self._save_state()
             return True
         if self.daily_loss_pct <= -self.daily_max_loss_pct:
             self._tripped = True
+            self._save_state()
             return True
         return False
 
     def reset_day(self) -> None:
-        """Call at the start of a new trading session or after cooldown."""
+        """Reset state for a new trading session and persist."""
         self.consecutive_losses = 0
         self.session_pnl = 0.0
         self.session_trades = 0
         self.session_start_time = time.time()
+        self.session_date = date.today().isoformat()
         self._tripped = False
         self.last_trade_result = None
+        self._save_state()
+        logger.info("Circuit breaker state reset for new trading day")
 
 
 class RiskManager:

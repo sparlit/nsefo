@@ -124,16 +124,133 @@ class Coordinator:
     """
     Coordinates order execution, trade tracking, and stop-loss management.
     Active trades are stored ONLY in global_state — no duplicate local dict.
+    
+    On initialization, reconciles broker positions with local state to ensure
+    positions opened before a restart are monitored for stop-loss and targets.
     """
 
-    def __init__(self, broker: Any, risk_manager: Any = None):
+    def __init__(self, broker: Any, risk_manager: Any = None, reconcile_positions: bool = True):
         self.broker = broker
         self.risk_manager = risk_manager
-        if self.risk_manager:
-            self.risk_manager.cb.reset_day()  # May be None — circuit breaker recording skipped if so
+        # Circuit breaker state is now automatically loaded from disk by CircuitBreakerState.__post_init__
+        # No unconditional reset_day() call - state persists across restarts within the same trading day
         self.state = global_state  # used for logging only
         self._exit_requested = threading.Event()
         self._track_thread: Optional[threading.Thread] = None
+        
+        # Reconcile broker positions on startup to restore monitoring for existing positions
+        if reconcile_positions:
+            self._reconcile_broker_positions()
+
+    def _reconcile_broker_positions(self) -> None:
+        """
+        Query broker for open positions and reconcile with local state.
+        
+        This ensures that positions opened before a restart are added to the
+        local monitoring loop for stop-loss and target tracking. Without this,
+        a restart would leave existing broker positions unmonitored locally.
+        
+        Security: Positions are added to ACTIVE only if they don't already exist
+        (by order_id or symbol+side combination) to prevent duplicate monitoring.
+        """
+        try:
+            logger.info("Reconciling broker positions with local state...")
+            
+            # Query broker for current positions
+            broker_positions = self.broker.get_positions()
+            
+            if not broker_positions:
+                logger.info("No open positions at broker - reconciliation complete")
+                return
+            
+            with global_state._lock:
+                # Get existing active order IDs and symbol+side pairs
+                existing_order_ids = {t.get("order_id") for t in global_state.kanban["ACTIVE"]}
+                existing_positions = {
+                    (t.get("symbol"), t.get("side")) 
+                    for t in global_state.kanban["ACTIVE"]
+                }
+                
+                reconciled_count = 0
+                for pos in broker_positions:
+                    # Extract position details (broker-specific field mapping)
+                    symbol = pos.get("symbol") or pos.get("trading_symbol") or pos.get("tradingsymbol")
+                    quantity = pos.get("quantity") or pos.get("qty") or pos.get("net_quantity", 0)
+                    avg_price = pos.get("average_price") or pos.get("avg_price") or pos.get("buy_avg", 0.0)
+                    order_id = pos.get("order_id") or pos.get("tag") or f"reconciled_{symbol}_{int(time.time())}"
+                    
+                    # Determine side from quantity (positive = BUY, negative = SELL)
+                    if quantity == 0:
+                        continue  # Skip closed positions
+                    
+                    side = "BUY" if quantity > 0 else "SELL"
+                    abs_quantity = abs(quantity)
+                    
+                    # Skip if already being monitored
+                    if order_id in existing_order_ids:
+                        logger.debug(f"Position {symbol} {side} already in ACTIVE (order_id: {order_id})")
+                        continue
+                    
+                    if (symbol, side) in existing_positions:
+                        logger.debug(f"Position {symbol} {side} already in ACTIVE (by symbol+side)")
+                        continue
+                    
+                    # Add to ACTIVE for monitoring
+                    # Note: We don't have original stop_loss/target from before restart,
+                    # so we set conservative defaults based on current price
+                    # Users should manually set proper stops after restart if needed
+                    if avg_price > 0:
+                        # Conservative stop: 2% for BUY, 2% for SELL
+                        if side == "BUY":
+                            default_sl = avg_price * 0.98
+                            default_target = avg_price * 1.05
+                        else:
+                            default_sl = avg_price * 1.02
+                            default_target = avg_price * 0.95
+                    else:
+                        default_sl = None
+                        default_target = None
+                    
+                    reconciled_trade = {
+                        "symbol": symbol,
+                        "side": side,
+                        "price": avg_price,
+                        "quantity": abs_quantity,
+                        "order_id": order_id,
+                        "entry_time": time.time(),
+                        "stop_loss": default_sl,
+                        "target": default_target,
+                        "reconciled": True,  # Flag to indicate this was restored from broker
+                    }
+                    
+                    global_state.kanban["ACTIVE"].append(reconciled_trade)
+                    reconciled_count += 1
+                    
+                    logger.warning(
+                        f"Reconciled position from broker: {side} {abs_quantity} {symbol} @ {avg_price:.2f} "
+                        f"(order_id: {order_id}). Default stops applied - verify manually!"
+                    )
+                
+                if reconciled_count > 0:
+                    global_state.update_summary(
+                        active_trades_count=len(global_state.kanban["ACTIVE"])
+                    )
+                    global_state.add_log(
+                        f"Reconciled {reconciled_count} position(s) from broker on startup. "
+                        "Verify stop-loss and target levels manually."
+                    )
+                    logger.info(
+                        f"Position reconciliation complete: {reconciled_count} position(s) added to monitoring"
+                    )
+                else:
+                    logger.info("Position reconciliation complete: all broker positions already monitored")
+                    
+        except Exception as e:
+            logger.error(f"Failed to reconcile broker positions: {e}. Continuing without reconciliation.")
+            global_state.add_log(
+                f"WARNING: Position reconciliation failed - existing broker positions may not be monitored. "
+                f"Error: {e}"
+            )
 
     def execute_confirmed_trade(self, trade: Dict[str, Any]) -> OrderInfo:
         """
