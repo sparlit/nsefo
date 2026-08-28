@@ -27,7 +27,7 @@
 | 4 | **Signal Aggregation** | `nsefo_core.calculate_probability([trend, rsi])` → conviction score |
 | 5 | **Greeks Verification** | `opengreeks.black_scholes.delta()` → Delta per strike |
 | 6 | **Risk Shielding** | `RiskManager.assess_trade()` → is_safe boolean |
-| 7 | **Auto-Pilot Confirmation** | `timed_input_with_default()` → 10s window |
+| 7 | **Auto-Pilot Confirmation** | `auto_confirm_trade()` → explicit YES/Y required (fail-safe) |
 | 8 | **Exchange Dispatch** | `Coordinator.execute_confirmed_trade()` → `broker.place_order()` |
 | 9 | **Autonomous Management** | `track_trades()` called every 1s by market cycle |
 | 10 | **Dynamic Trailing** | `apply_trailing_sl()` → SL moves with favourable price |

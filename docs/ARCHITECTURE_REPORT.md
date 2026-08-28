@@ -145,7 +145,7 @@ The parser returns: `{action, symbol, strike, option_type, raw}`
 4. **Signal Convergence** — `calculate_probability` synthesizes conviction score
 5. **Greeks Verification** — `opengreeks.black_scholes.delta` computes option Delta
 6. **Risk Assessment** — `RiskManager.assess_trade` checks capital exposure
-7. **Human Confirmation** — 10-second timeout `timed_input_with_default` in `python_app/core/utils.py`
+7. **Human Confirmation** — Explicit YES/Y required (fail-safe authorization) in `python_app/core/utils.py`
 8. **Order Execution** — `broker.place_order` dispatches to Dhan
 9. **Autonomous Tracking** — `Coordinator.track_trades` runs every 1 second
 10. **Dynamic Trailing SL** — `Coordinator.apply_trailing_sl` adjusts stop-loss

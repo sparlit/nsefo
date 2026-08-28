@@ -81,7 +81,7 @@ Legacy `start_master_pro.py` is deprecated — all new sessions should use `inst
 
 ### Safety Protocols
 
-**10-second confirmation gate**: `timed_input_with_default()` in `python_app/core/utils.py` uses a background thread + `threading.Event.wait(timeout)` to implement non-blocking input with automatic fallback. If the trader is away, paper-mode orders are rejected and live-mode orders proceed with the recommended action.
+**Fail-safe trade confirmation**: `auto_confirm_trade()` in `python_app/core/utils.py` requires explicit user input of "YES" or "Y" within a 10-second timeout window. The function uses `timed_input_explicit()` which returns `None` on timeout, stdin unavailability, or any error condition. This ensures that unattended processes, processes with closed stdin, or processes running in environments where stdin is unavailable cannot accidentally authorize live trades. Any timeout, missing input, or invalid response results in automatic trade rejection.
 
 **Risk Manager hard stop**: `is_safe = False` from `RiskManager.assess_trade()` is a hard block — the Coordinator does not execute the trade regardless of conviction score.
 
@@ -142,7 +142,7 @@ These issues are verified present in the codebase as of 2026-07-11 and must be r
 **File**: `python_app/broker/moneysukh.py:30-31`
 ```python
 self.client_id = client_id or "ONS123_U"
-self.api_key = kwargs.get("api_key", "jYSaTKDmDb0I0YTdbQpWTRp2dyMWIJv4dGJHjvGC9nVGKNAkrjtbSFCxl8for7Ka")
+self.api_key = kwargs.get("api_key", "****r7Ka")
 ```
 The docstring (lines 5-6, 22-23) also contains these credentials in comments. **Violates the project credential rule.** Fix: replace all occurrences with `""` (empty string) as default.
 
