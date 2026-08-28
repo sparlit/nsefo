@@ -100,8 +100,9 @@ class DashboardWindow(QMainWindow):
         self.timer.start(1000)
 
     def refresh(self):
-        coord = self.app.coordinator
-        active_list = [f"<b>{t['symbol']}</b><br>{t['side']} @ {t['price']}<br><small>Qty: {t['quantity']}</small>" for t in coord.active_trades.values()]
+        from python_app.core.state import global_state
+        with global_state._lock:
+            active_list = [f"<b>{t['symbol']}</b><br>{t['side']} @ {t['price']}<br><small>Qty: {t['qty']}</small>" for t in global_state.kanban["ACTIVE"]]
         self.cols["ACTIVE"].update_items(active_list)
 
         scanning_list = [f"<b>{s}</b><br><small>Neural Cluster Analysis Active...</small>" for s in self.app.watch_list]

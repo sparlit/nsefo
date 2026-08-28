@@ -210,7 +210,7 @@ class TradingApp:
                 proposal = {
                     'security_id': sid, 'exchange_segment': 'NSE_FNO',
                     'symbol': symbol, 'side': data['action'],
-                    'quantity': quantity, 'price': last_price, 'sl': sl_val,
+                    'qty': quantity, 'price': last_price, 'sl': sl_val,
                     'tag': 'NSEFO_EXPERT'
                 }
                 try:
@@ -274,7 +274,7 @@ class TradingApp:
                     lp = self._extract_ltp(quote, sid)
                     if lp > 0:
                         current_prices[trade['symbol']] = lp
-                        active_list.append({"symbol": trade['symbol'], "side": trade['side'], "price": trade['price'], "ltp": lp, "quantity": trade['quantity']})
+                        active_list.append({"symbol": trade['symbol'], "side": trade['side'], "price": trade['price'], "ltp": lp, "quantity": trade['qty']})
 
                 self.coordinator.track_trades(lambda sym: current_prices.get(sym, 0))
                 global_state.update_active_trades(active_list)
