@@ -158,7 +158,7 @@ class Coordinator:
             order_payload = {
                 "symbol": symbol,
                 "side": side,
-                "qty": qty,
+                "quantity": qty,
                 "price": price,
                 "idempotency_key": f"{base_key}_a{attempt}",
                 "tag": trade.get("tag", "NSEFO"),
@@ -268,7 +268,11 @@ class Coordinator:
                         market_price = monitor_func(symbol)
                     else:
                         ltp_data = self.broker.get_market_data([{"security_id": symbol, "exchange_segment": "NSE_FNO"}])
-                        market_price = ltp_data.get(symbol, {}).get("last_price", 0)
+                        # Handle both direct format and wrapped format (e.g., Bajaj returns {"data": {...}})
+                        if "data" in ltp_data and isinstance(ltp_data["data"], dict):
+                            market_price = ltp_data["data"].get(symbol, {}).get("last_price", 0)
+                        else:
+                            market_price = ltp_data.get(symbol, {}).get("last_price", 0)
 
                     if not market_price:
                         continue
@@ -360,7 +364,7 @@ class Coordinator:
         exit_order_payload = {
             "symbol": symbol,
             "side": exit_side,
-            "qty": qty,
+            "quantity": qty,
             "price": current_price,
             "idempotency_key": f"{order_id}_exit_{uuid.uuid4().hex[:8]}",
             "tag": "EXIT",
