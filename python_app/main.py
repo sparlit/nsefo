@@ -148,8 +148,12 @@ class TradingApp:
         curr_atr = brains.get('atr', last_price * 0.015)  # fallback to ~1.5% if no ATR
         if data['action'] == 'BUY':
             sl_val = round(last_price - 1.5 * curr_atr, 2)
+            # Target: 2:1 reward-to-risk ratio
+            target_val = round(last_price + 3.0 * curr_atr, 2)
         else:
             sl_val = round(last_price + 1.5 * curr_atr, 2)
+            # Target: 2:1 reward-to-risk ratio
+            target_val = round(last_price - 3.0 * curr_atr, 2)
 
         risk_report = self.risk_manager.assess_trade(last_price, sl_val, quantity)
 
@@ -210,7 +214,8 @@ class TradingApp:
                 proposal = {
                     'security_id': sid, 'exchange_segment': 'NSE_FNO',
                     'symbol': symbol, 'side': data['action'],
-                    'qty': quantity, 'price': last_price, 'sl': sl_val,
+                    'quantity': quantity, 'price': last_price, 
+                    'stop_loss': sl_val, 'target': target_val,
                     'tag': 'NSEFO_EXPERT'
                 }
                 try:
@@ -274,7 +279,7 @@ class TradingApp:
                     lp = self._extract_ltp(quote, sid)
                     if lp > 0:
                         current_prices[trade['symbol']] = lp
-                        active_list.append({"symbol": trade['symbol'], "side": trade['side'], "price": trade['price'], "ltp": lp, "quantity": trade['qty']})
+                        active_list.append({"symbol": trade['symbol'], "side": trade['side'], "price": trade['price'], "ltp": lp, "quantity": trade['quantity']})
 
                 self.coordinator.track_trades(lambda sym: current_prices.get(sym, 0))
                 global_state.update_active_trades(active_list)
