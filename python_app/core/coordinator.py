@@ -254,7 +254,7 @@ class Coordinator:
 
     def execute_confirmed_trade(self, trade: Dict[str, Any]) -> OrderInfo:
         """
-        Place a confirmed trade order with idempotency key.
+        Place a confirmed trade order with idempotency key and fill verification.
 
         The idempotency key is stable across all retry attempts for the same logical order.
         If a network call fails or times out, the retry uses the SAME key so the broker
@@ -264,7 +264,18 @@ class Coordinator:
         attempt succeeded but the response was lost. This prevents duplicate orders when
         the broker accepted the order but the response was dropped due to network issues.
 
+        SECURITY: After order placement, this method polls get_order_status to verify
+        the order is actually FILLED before adding it to ACTIVE tracking. This prevents
+        exposure mismatches where pending or partially-filled orders are tracked as
+        fully-filled positions. Only the actual filled quantity is tracked.
+
         Idempotency key format: {symbol}_{side}_{uuid4_short}
+        
+        Returns:
+            OrderInfo dict with actual filled quantity and average price
+            
+        Raises:
+            OrderError: If order is rejected, times out, or cannot be confirmed as filled
         """
         symbol = trade["symbol"]
         side = trade["side"]
@@ -283,6 +294,12 @@ class Coordinator:
                 # Before retrying, check if the order was already placed
                 try:
                     logger.info(f"Reconciling orderbook before retry {attempt+1} for {symbol} {side}")
+                    
+                    # Check if broker implements get_orderbook (not in base interface)
+                    if not hasattr(self.broker, 'get_orderbook'):
+                        logger.debug("Broker does not implement get_orderbook, skipping reconciliation")
+                        raise AttributeError("get_orderbook not implemented")
+                    
                     orderbook = self.broker.get_orderbook()
                     
                     # Look for recent orders matching this trade's characteristics
@@ -306,36 +323,80 @@ class Coordinator:
                             if order_id:
                                 logger.warning(
                                     f"Reconciliation found existing order {order_id} for {symbol} {side} {qty}. "
-                                    f"Previous attempt succeeded but response was lost. Using existing order."
+                                    f"Previous attempt succeeded but response was lost. Verifying fill status..."
                                 )
                                 
-                                # Register the reconciled order in global_state
-                                order_info = {
-                                    "order_id": order_id,
-                                    "symbol": symbol,
-                                    "side": side,
-                                    "price": price,
-                                    "qty": qty,
-                                    "status": "OPEN",
-                                }
-                                
-                                global_state.kanban["ACTIVE"].append({
-                                    "symbol": symbol,
-                                    "side": side,
-                                    "price": price,
-                                    "quantity": qty,
-                                    "order_id": order_id,
-                                    "entry_time": time.time(),
-                                    "stop_loss": trade.get("stop_loss"),
-                                    "target": trade.get("target"),
-                                })
-                                global_state.update_summary(
-                                    active_trades_count=len(global_state.kanban["ACTIVE"])
-                                )
-                                global_state.add_log(
-                                    f"Trade reconciled: {side} {qty} {symbol} @ {price} [order_id={order_id}]"
-                                )
-                                return order_info
+                                # Verify the reconciled order is actually filled before tracking
+                                try:
+                                    order_status_response = self.broker.get_order_status(order_id)
+                                    final_status = (order_status_response.get("status") or "").upper()
+                                    
+                                    if final_status not in ("COMPLETE", "FILLED", "EXECUTED"):
+                                        logger.warning(
+                                            f"Reconciled order {order_id} is not filled (status: {final_status}). "
+                                            f"Skipping reconciliation to prevent exposure mismatch."
+                                        )
+                                        continue  # Try next order in reconciliation
+                                    
+                                    # Extract actual filled quantity
+                                    filled_qty_raw = (
+                                        order_status_response.get("filled_quantity") or
+                                        order_status_response.get("filled_qty") or
+                                        order_status_response.get("quantity") or
+                                        qty
+                                    )
+                                    actual_filled_qty = int(filled_qty_raw) if filled_qty_raw else qty
+                                    
+                                    avg_price_raw = (
+                                        order_status_response.get("average_price") or
+                                        order_status_response.get("avg_price") or
+                                        order_status_response.get("price") or
+                                        price
+                                    )
+                                    actual_avg_price = float(avg_price_raw) if avg_price_raw else price
+                                    
+                                    logger.info(
+                                        f"Reconciled order {order_id} confirmed FILLED: "
+                                        f"{actual_filled_qty}/{qty} @ {actual_avg_price}"
+                                    )
+                                    
+                                    # Register the reconciled order with actual filled quantity
+                                    order_info = {
+                                        "order_id": order_id,
+                                        "symbol": symbol,
+                                        "side": side,
+                                        "price": actual_avg_price,
+                                        "qty": actual_filled_qty,
+                                        "status": "FILLED",
+                                        "requested_qty": qty,
+                                    }
+                                    
+                                    global_state.kanban["ACTIVE"].append({
+                                        "symbol": symbol,
+                                        "side": side,
+                                        "price": actual_avg_price,
+                                        "quantity": actual_filled_qty,
+                                        "order_id": order_id,
+                                        "entry_time": time.time(),
+                                        "stop_loss": trade.get("stop_loss"),
+                                        "target": trade.get("target"),
+                                        "requested_qty": qty,
+                                    })
+                                    global_state.update_summary(
+                                        active_trades_count=len(global_state.kanban["ACTIVE"])
+                                    )
+                                    global_state.add_log(
+                                        f"Trade reconciled: {side} {actual_filled_qty} {symbol} @ {actual_avg_price} "
+                                        f"[order_id={order_id}]"
+                                    )
+                                    return order_info
+                                    
+                                except Exception as verify_error:
+                                    logger.warning(
+                                        f"Failed to verify reconciled order {order_id}: {verify_error}. "
+                                        f"Skipping this order."
+                                    )
+                                    continue  # Try next order in reconciliation
                                 
                 except Exception as reconcile_error:
                     logger.warning(f"Reconciliation failed: {reconcile_error}. Proceeding with retry.")
@@ -393,31 +454,123 @@ class Coordinator:
                         symbol=symbol, side=side, price=price, qty=qty,
                     )
 
+                # ── Step 2: Verify order is FILLED before tracking ────────────
+                # Poll order status to confirm fill and get actual filled quantity
+                # Status "OPEN" means order was accepted, not filled
+                fill_confirmed = False
+                actual_filled_qty = 0
+                actual_avg_price = price
+                final_status = status
+                
+                # If already COMPLETE/FILLED, skip polling
+                if status in ("COMPLETE", "FILLED"):
+                    fill_confirmed = True
+                    actual_filled_qty = qty
+                    logger.info(f"Order {order_id} returned as {status} immediately")
+                else:
+                    # Poll for up to 20 seconds (10 * 2s) to confirm fill
+                    for poll_attempt in range(10):
+                        try:
+                            order_status_response = self.broker.get_order_status(order_id)
+                            final_status = (order_status_response.get("status") or "").upper()
+                            
+                            if final_status in ("COMPLETE", "FILLED", "EXECUTED"):
+                                fill_confirmed = True
+                                # Extract actual filled quantity (may differ from requested)
+                                filled_qty_raw = (
+                                    order_status_response.get("filled_quantity") or
+                                    order_status_response.get("filled_qty") or
+                                    order_status_response.get("quantity") or
+                                    qty  # Fallback to requested if not provided
+                                )
+                                # Ensure it's an integer
+                                actual_filled_qty = int(filled_qty_raw) if filled_qty_raw else qty
+                                
+                                # Use actual average fill price if available
+                                avg_price_raw = (
+                                    order_status_response.get("average_price") or
+                                    order_status_response.get("avg_price") or
+                                    order_status_response.get("price") or
+                                    price
+                                )
+                                # Ensure it's a float
+                                actual_avg_price = float(avg_price_raw) if avg_price_raw else price
+                                
+                                logger.info(
+                                    f"Order {order_id} confirmed FILLED: {actual_filled_qty}/{qty} @ {actual_avg_price}"
+                                )
+                                break
+                            elif final_status in ("REJECTED", "CANCELLED", "CANCELED"):
+                                logger.error(
+                                    f"Order {order_id} was {final_status} after placement. "
+                                    f"Not adding to ACTIVE tracking."
+                                )
+                                raise OrderError(
+                                    f"Order {final_status} after placement: {order_status_response.get('message', 'no reason provided')}",
+                                    symbol=symbol, side=side, price=price, qty=qty,
+                                )
+                            else:
+                                # Order still pending (OPEN, PENDING, etc.)
+                                logger.debug(
+                                    f"Order {order_id} status: {final_status}, waiting for fill... "
+                                    f"(poll {poll_attempt+1}/10)"
+                                )
+                                time.sleep(2)
+                                
+                        except Exception as e:
+                            logger.warning(
+                                f"Error checking order status (poll {poll_attempt+1}/10): {e}"
+                            )
+                            time.sleep(2)
+                    
+                    if not fill_confirmed:
+                        logger.error(
+                            f"Order {order_id} did not fill within 20 seconds (final status: {final_status}). "
+                            f"Not adding to ACTIVE tracking to prevent exposure mismatch."
+                        )
+                        raise OrderError(
+                            f"Order timeout: could not confirm fill within 20 seconds (status: {final_status})",
+                            symbol=symbol, side=side, price=price, qty=qty,
+                        )
+                
+                # ── Step 3: Handle partial fills ──────────────────────────────
+                if actual_filled_qty < qty:
+                    logger.warning(
+                        f"Partial fill detected: {actual_filled_qty}/{qty} filled for {symbol} {side}. "
+                        f"Tracking only filled quantity."
+                    )
+                    global_state.add_log(
+                        f"WARNING: Partial fill - {side} {actual_filled_qty}/{qty} {symbol} @ {actual_avg_price}"
+                    )
+                
+                # ── Step 4: Register in global_state with ACTUAL filled qty ───
                 order_info = {
                     "order_id": order_id,
                     "symbol": symbol,
                     "side": side,
-                    "price": price,
-                    "qty": qty,
-                    "status": "OPEN",
+                    "price": actual_avg_price,
+                    "qty": actual_filled_qty,
+                    "status": "FILLED",
+                    "requested_qty": qty,  # Track original request for audit
                 }
 
-                # ── Register in global_state (thread-safe) ────────────────────
                 global_state.kanban["ACTIVE"].append({
                     "symbol": symbol,
                     "side": side,
-                    "price": price,
-                    "quantity": qty,
+                    "price": actual_avg_price,
+                    "quantity": actual_filled_qty,
                     "order_id": order_id,
                     "entry_time": time.time(),
                     "stop_loss": trade.get("stop_loss"),
                     "target": trade.get("target"),
+                    "requested_qty": qty,  # Audit trail
                 })
                 global_state.update_summary(
                     active_trades_count=len(global_state.kanban["ACTIVE"])
                 )
                 global_state.add_log(
-                    f"Trade placed: {side} {qty} {symbol} @ {price} [idempotency={idempotency_key}]"
+                    f"Trade confirmed: {side} {actual_filled_qty} {symbol} @ {actual_avg_price} "
+                    f"[order_id={order_id}]"
                 )
                 return order_info
 
@@ -566,6 +719,12 @@ class Coordinator:
             if attempt > 0:
                 try:
                     logger.info(f"Reconciling orderbook before exit retry {attempt+1} for {order_id}")
+                    
+                    # Check if broker implements get_orderbook (not in base interface)
+                    if not hasattr(self.broker, 'get_orderbook'):
+                        logger.debug("Broker does not implement get_orderbook, skipping exit reconciliation")
+                        raise AttributeError("get_orderbook not implemented")
+                    
                     orderbook = self.broker.get_orderbook()
                     
                     # Look for recent exit orders matching this trade's characteristics
