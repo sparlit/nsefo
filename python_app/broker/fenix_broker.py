@@ -63,12 +63,32 @@ class FenixDhanProvider(Broker):
     def place_order(self, o: Dict[str, Any]) -> Dict[str, Any]:
         if not self.api: return {"order_id": "", "status": "ERROR", "message": "Fenix API not initialized"}
         try:
+            # Extract idempotency key for duplicate prevention
+            # The coordinator generates a stable idempotency_key that remains the same across all retry attempts
+            # This prevents duplicate orders when a response is lost but the broker accepted the order
+            idempotency_key = o.get('idempotency_key', '')
+            tag = o.get('tag', 'NSEFO')
+            
+            # Build market_order parameters
+            # Use idempotency_key as the primary tag to enable broker-side deduplication
+            # If idempotency_key is provided, it takes precedence over the generic tag
+            order_tag = idempotency_key if idempotency_key else tag
+            
+            # Log idempotency key usage for audit trail
+            if idempotency_key:
+                self.logger.debug(f"Placing order with idempotency_key: {idempotency_key}")
+            
+            # Call Fenix API with idempotency metadata
+            # The 'tag' parameter in Fenix/Dhan API serves as a client-side order identifier
+            # that can be used for idempotency and order tracking
             order = self.api.market_order(
                 security_id=o['security_id'],
                 exchange=o['exchange_segment'],
                 side=o['side'],
-                quantity=o['quantity']
+                quantity=o['quantity'],
+                tag=order_tag  # Forward idempotency key as tag for broker-side deduplication
             )
+            
             # Validate response structure and extract order ID
             if not isinstance(order, dict):
                 self.logger.error(f"Fenix returned non-dict response: {type(order)}")
@@ -85,6 +105,10 @@ class FenixDhanProvider(Broker):
             if not oid:
                 self.logger.error("Fenix returned empty orderId")
                 return {"order_id": "", "status": "REJECTED", "message": "Broker returned empty order ID"}
+            
+            # Log successful order placement with idempotency tracking
+            if idempotency_key:
+                self.logger.info(f"Order placed successfully: {oid} (idempotency_key: {idempotency_key})")
             
             return {"order_id": oid, "status": "OPEN", "message": ""}
         except Exception as e:
