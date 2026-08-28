@@ -112,7 +112,10 @@ class KotakNeoProvider(Broker):
             )
             if resp.status_code in (200, 201):
                 data = resp.json()
-                oid = str(data.get("order_id", ""))
+                oid = str(data.get("order_id", "")).strip()
+                if not oid:
+                    self.logger.error("Kotak Neo returned empty order_id")
+                    return {"order_id": "", "status": "REJECTED", "message": "Broker returned empty order ID"}
                 return {"order_id": oid, "status": "OPEN", "message": ""}
             return {"order_id": "", "status": "REJECTED", "message": f"HTTP {resp.status_code}"}
         except Exception as e:

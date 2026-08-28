@@ -178,17 +178,32 @@ class Coordinator:
                         "message": "" if oid else "Broker returned empty order_id",
                     }
 
-                order_id = result.get("order_id", "") or f"{base_key}_a{attempt}"
+                # Extract order_id and validate it's non-empty
+                order_id = result.get("order_id", "").strip()
+                if not order_id:
+                    raise OrderError(
+                        f"Broker returned empty order_id: {result.get('message', 'no order ID provided')}",
+                        symbol=symbol, side=side, price=price, qty=qty,
+                    )
 
-                if result.get("status") == "REJECTED":
+                # Validate status is a known value
+                status = result.get("status", "").upper()
+                if status == "REJECTED":
                     raise OrderError(
                         f"Order rejected: {result.get('message', 'unknown')}",
                         symbol=symbol, side=side, price=price, qty=qty,
                     )
 
-                if result.get("status") == "ERROR":
+                if status == "ERROR":
                     raise OrderError(
-                        f"Order failed: {result.get('message', 'broker returned empty order_id')}",
+                        f"Order failed: {result.get('message', 'broker returned error status')}",
+                        symbol=symbol, side=side, price=price, qty=qty,
+                    )
+                
+                # Only accept explicit success statuses
+                if status not in ("OPEN", "PENDING", "COMPLETE", "FILLED"):
+                    raise OrderError(
+                        f"Unknown order status '{status}': {result.get('message', 'unexpected broker response')}",
                         symbol=symbol, side=side, price=price, qty=qty,
                     )
 

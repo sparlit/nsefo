@@ -97,8 +97,11 @@ class AliceBlueProvider(Broker):
             response = self.session.post(url, json=payload, headers=self.headers, timeout=10)
             if response.status_code == 200:
                 data = response.json()
-                oid = str(data.get('order_id', ''))
-                return {"order_id": oid, "status": "OPEN" if oid else "ERROR", "message": "" if oid else "No order_id returned"}
+                oid = str(data.get('order_id', '')).strip()
+                if not oid:
+                    self.logger.error("AliceBlue returned empty order_id")
+                    return {"order_id": "", "status": "REJECTED", "message": "Broker returned empty order ID"}
+                return {"order_id": oid, "status": "OPEN", "message": ""}
             return {"order_id": "", "status": "REJECTED", "message": response.text[:80]}
         except Exception as e:
             self.logger.error(f"AliceBlue Order Error: {e}")

@@ -69,7 +69,23 @@ class FenixDhanProvider(Broker):
                 side=o['side'],
                 quantity=o['quantity']
             )
-            oid = str(order.get('orderId', ''))
+            # Validate response structure and extract order ID
+            if not isinstance(order, dict):
+                self.logger.error(f"Fenix returned non-dict response: {type(order)}")
+                return {"order_id": "", "status": "ERROR", "message": "Invalid response format from broker"}
+            
+            # Check for explicit success indicators
+            status = order.get('status', '').lower()
+            if status and status not in ('success', 'ok', 'complete', 'open', 'pending'):
+                self.logger.warning(f"Fenix order rejected with status: {status}")
+                return {"order_id": "", "status": "REJECTED", "message": order.get('message', f"Order status: {status}")}
+            
+            # Extract and validate order ID
+            oid = str(order.get('orderId', '')).strip()
+            if not oid:
+                self.logger.error("Fenix returned empty orderId")
+                return {"order_id": "", "status": "REJECTED", "message": "Broker returned empty order ID"}
+            
             return {"order_id": oid, "status": "OPEN", "message": ""}
         except Exception as e:
             self.logger.error(f"Fenix Order Error: {e}")
