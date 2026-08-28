@@ -256,11 +256,15 @@ class Coordinator:
         """
         Place a confirmed trade order with idempotency key.
 
-        The idempotency key is generated per-execution-attempt (not per-order).
-        If the network call fails, the retry uses the SAME key so the broker
-        (not our code) recognizes it as a duplicate and doesn't double-fill.
+        The idempotency key is stable across all retry attempts for the same logical order.
+        If a network call fails or times out, the retry uses the SAME key so the broker
+        can recognize it as a duplicate and prevent double-fills.
 
-        Idempotency key format: {symbol}_{side}_{uuid4_short}_{attempt}
+        Before retrying, we reconcile with the broker's orderbook to check if a previous
+        attempt succeeded but the response was lost. This prevents duplicate orders when
+        the broker accepted the order but the response was dropped due to network issues.
+
+        Idempotency key format: {symbol}_{side}_{uuid4_short}
         """
         symbol = trade["symbol"]
         side = trade["side"]
@@ -270,17 +274,79 @@ class Coordinator:
             raise ValueError("Trade must include 'quantity' or 'qty' field")
         price = trade["price"]
 
-        # ── Build base idempotency key (stable across retries) ───────────────
-        base_key = trade.get("idempotency_key") or f"{symbol}_{side}_{uuid.uuid4().hex[:8]}"
+        # ── Build stable idempotency key (same for all retries) ──────────────
+        idempotency_key = trade.get("idempotency_key") or f"{symbol}_{side}_{uuid.uuid4().hex[:8]}"
 
         for attempt in range(3):
-            # Stable per-attempt key: base + attempt suffix
+            # ── Reconciliation: Check if previous attempt succeeded ──────────
+            if attempt > 0:
+                # Before retrying, check if the order was already placed
+                try:
+                    logger.info(f"Reconciling orderbook before retry {attempt+1} for {symbol} {side}")
+                    orderbook = self.broker.get_orderbook()
+                    
+                    # Look for recent orders matching this trade's characteristics
+                    # Check last 10 orders to avoid scanning entire history
+                    recent_orders = orderbook[-10:] if isinstance(orderbook, list) else []
+                    
+                    for existing_order in recent_orders:
+                        existing_symbol = existing_order.get("symbol") or existing_order.get("trading_symbol")
+                        existing_side = existing_order.get("side") or existing_order.get("transaction_type")
+                        existing_qty = existing_order.get("quantity") or existing_order.get("qty")
+                        existing_status = (existing_order.get("status") or "").upper()
+                        
+                        # Match by symbol, side, quantity, and non-rejected status
+                        if (existing_symbol == symbol and 
+                            existing_side == side and 
+                            existing_qty == qty and
+                            existing_status not in ("REJECTED", "CANCELLED", "CANCELED")):
+                            
+                            # Found a matching order from previous attempt
+                            order_id = existing_order.get("order_id") or existing_order.get("orderid")
+                            if order_id:
+                                logger.warning(
+                                    f"Reconciliation found existing order {order_id} for {symbol} {side} {qty}. "
+                                    f"Previous attempt succeeded but response was lost. Using existing order."
+                                )
+                                
+                                # Register the reconciled order in global_state
+                                order_info = {
+                                    "order_id": order_id,
+                                    "symbol": symbol,
+                                    "side": side,
+                                    "price": price,
+                                    "qty": qty,
+                                    "status": "OPEN",
+                                }
+                                
+                                global_state.kanban["ACTIVE"].append({
+                                    "symbol": symbol,
+                                    "side": side,
+                                    "price": price,
+                                    "quantity": qty,
+                                    "order_id": order_id,
+                                    "entry_time": time.time(),
+                                    "stop_loss": trade.get("stop_loss"),
+                                    "target": trade.get("target"),
+                                })
+                                global_state.update_summary(
+                                    active_trades_count=len(global_state.kanban["ACTIVE"])
+                                )
+                                global_state.add_log(
+                                    f"Trade reconciled: {side} {qty} {symbol} @ {price} [order_id={order_id}]"
+                                )
+                                return order_info
+                                
+                except Exception as reconcile_error:
+                    logger.warning(f"Reconciliation failed: {reconcile_error}. Proceeding with retry.")
+            
+            # ── Place order with stable idempotency key ───────────────────────
             order_payload = {
                 "symbol": symbol,
                 "side": side,
                 "quantity": qty,
                 "price": price,
-                "idempotency_key": f"{base_key}_a{attempt}",
+                "idempotency_key": idempotency_key,  # Same key for all retries
                 "tag": trade.get("tag", "NSEFO"),
             }
 
@@ -351,7 +417,7 @@ class Coordinator:
                     active_trades_count=len(global_state.kanban["ACTIVE"])
                 )
                 global_state.add_log(
-                    f"Trade placed: {side} {qty} {symbol} @ {price} [idempotency={order_payload['idempotency_key']}]"
+                    f"Trade placed: {side} {qty} {symbol} @ {price} [idempotency={idempotency_key}]"
                 )
                 return order_info
 
@@ -481,17 +547,64 @@ class Coordinator:
         # ── Step 2: Place exit order at broker FIRST ──────────────────────
         # Exit side is opposite of entry side
         exit_side = "SELL" if side == "BUY" else "BUY"
+        
+        # Generate stable idempotency key for exit order (same across all retries)
+        exit_idempotency_key = f"{order_id}_exit_{uuid.uuid4().hex[:8]}"
+        
         exit_order_payload = {
             "symbol": symbol,
             "side": exit_side,
             "quantity": qty,
             "price": current_price,
-            "idempotency_key": f"{order_id}_exit_{uuid.uuid4().hex[:8]}",
+            "idempotency_key": exit_idempotency_key,  # Stable across retries
             "tag": "EXIT",
         }
         
         exit_order_id = None
         for attempt in range(3):
+            # ── Reconciliation: Check if previous exit attempt succeeded ──────
+            if attempt > 0:
+                try:
+                    logger.info(f"Reconciling orderbook before exit retry {attempt+1} for {order_id}")
+                    orderbook = self.broker.get_orderbook()
+                    
+                    # Look for recent exit orders matching this trade's characteristics
+                    recent_orders = orderbook[-10:] if isinstance(orderbook, list) else []
+                    
+                    for existing_order in recent_orders:
+                        existing_symbol = existing_order.get("symbol") or existing_order.get("trading_symbol")
+                        existing_side = existing_order.get("side") or existing_order.get("transaction_type")
+                        existing_qty = existing_order.get("quantity") or existing_order.get("qty")
+                        existing_status = (existing_order.get("status") or "").upper()
+                        
+                        # Match by symbol, exit side, quantity, and non-rejected status
+                        if (existing_symbol == symbol and 
+                            existing_side == exit_side and 
+                            existing_qty == qty and
+                            existing_status not in ("REJECTED", "CANCELLED", "CANCELED")):
+                            
+                            # Found a matching exit order from previous attempt
+                            found_exit_order_id = existing_order.get("order_id") or existing_order.get("orderid")
+                            if found_exit_order_id:
+                                logger.warning(
+                                    f"Reconciliation found existing exit order {found_exit_order_id} for {order_id}. "
+                                    f"Previous exit attempt succeeded but response was lost. Using existing order."
+                                )
+                                exit_order_id = found_exit_order_id
+                                break
+                    
+                    if exit_order_id:
+                        # Found reconciled exit order, skip to verification
+                        logger.info(f"Using reconciled exit order {exit_order_id}, proceeding to fill verification")
+                        break
+                        
+                except Exception as reconcile_error:
+                    logger.warning(f"Exit reconciliation failed: {reconcile_error}. Proceeding with retry.")
+            
+            # Skip placement if we found a reconciled order
+            if exit_order_id:
+                break
+            
             try:
                 logger.info(f"Attempting broker exit for {order_id} (attempt {attempt+1}/3): {exit_side} {qty} {symbol} @ {current_price}")
                 result = self.broker.place_order(exit_order_payload)
