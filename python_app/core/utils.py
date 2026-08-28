@@ -16,10 +16,17 @@ def timed_input_with_default(prompt: str, suggestion: str, timeout: int = 10) ->
     Uses select (Unix) or msvcrt (Windows) to avoid blocking indefinitely
     on a closed/stdin pipe in the daemon thread.
     
-    SECURITY NOTE: This function is used by auto_confirm_trade for live trade authorization.
-    The suggestion parameter is only used for non-critical operations. For critical operations
-    like trade confirmation, callers should check if actual user input was received using
-    timed_input_explicit().
+    SECURITY WARNING: This function has FAIL-OPEN behavior and must NEVER be used for
+    security-critical operations like trade authorization. When stdin is unavailable,
+    closed, or times out, this function returns the caller-provided suggestion, which
+    could result in unintended authorization of critical operations.
+    
+    For security-critical operations (trade confirmation, fund transfers, etc.),
+    use timed_input_explicit() instead, which returns None on timeout/unavailability
+    and implements fail-safe (fail-closed) behavior.
+    
+    DEPRECATED: This function is retained only for non-critical UI prompts.
+    Do not use for any authorization or confirmation workflows.
     """
     result = [None]
     event = threading.Event()
@@ -137,7 +144,7 @@ def auto_confirm_trade(trade_details: Any, recommend_action: str = "YES") -> boo
     """
     Prompts for explicit trade confirmation with a timeout.
     
-    SECURITY: This function implements fail-safe authorization for live trade execution.
+    SECURITY: This function implements fail-safe (fail-closed) authorization for live trade execution.
     Returns True ONLY if the user explicitly enters "YES" or "Y" within the timeout period.
     
     Any of the following conditions result in rejection (False):
@@ -151,13 +158,25 @@ def auto_confirm_trade(trade_details: Any, recommend_action: str = "YES") -> boo
     running in environments where stdin is unavailable cannot accidentally authorize
     live trades.
     
+    IMPORTANT: The recommend_action parameter is COMPLETELY IGNORED and has no effect
+    on the authorization decision. It is retained only for backward API compatibility.
+    The function will NEVER use a default value for authorization - explicit user input
+    of "YES" or "Y" is the ONLY way to authorize a trade.
+    
     Args:
         trade_details: Trade information to display to the user
-        recommend_action: Ignored for security reasons. Kept for API compatibility.
+        recommend_action: IGNORED. Has no effect. Kept only for API compatibility.
+                         Do not rely on this parameter for any behavior.
         
     Returns:
         bool: True only if user explicitly entered "YES" or "Y", False otherwise
     """
+    # Explicitly log if caller provided a non-default recommend_action to detect misuse
+    if recommend_action != "YES":
+        logger.warning(
+            f"auto_confirm_trade called with recommend_action='{recommend_action}'. "
+            "This parameter is ignored. Only explicit user input authorizes trades."
+        )
     print(f"\n{'='*60}")
     print(f"TRADE CONFIRMATION REQUIRED")
     print(f"{'='*60}")
