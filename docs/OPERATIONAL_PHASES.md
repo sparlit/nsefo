@@ -108,20 +108,27 @@ If `is_safe = False`, the Coordinator rejects the order with recommendation `RED
 
 **Trigger**: After analysis, risk check, and before order dispatch
 
-The `auto_confirm_trade()` function in `python_app/core/utils.py` enforces a 10-second human-in-the-loop window:
+The `auto_confirm_trade()` function in `python_app/core/utils.py` enforces a 10-second human-in-the-loop window with fail-safe authorization:
 
 ```python
-choice = timed_input_with_default("Confirm trade execution?", recommend_action, 10)
+choice = timed_input_explicit("Confirm trade execution? [YES/Y to confirm]:", timeout=10)
+if choice is None:
+    return False  # Reject on timeout or stdin unavailable
 return choice.upper() in ["YES", "Y"]
 ```
 
-If no input is received within 10 seconds, the default action (`YES` for EXECUTE, `NO` for REJECT) is used. The system continues operating autonomously.
+**SECURITY**: Trade execution requires explicit user confirmation. The function returns `True` ONLY if the user types "YES" or "Y" within the timeout period. Any of the following conditions result in automatic rejection:
+- Timeout without input
+- stdin unavailable, closed, or redirected
+- Empty input or any response other than "YES"/"Y"
+
+This ensures unattended processes or processes with closed stdin cannot accidentally authorize live trades.
 
 ---
 
 ## Phase 8 — Order Execution
 
-**Trigger**: User confirmation received (or timeout with default)
+**Trigger**: Explicit user confirmation received
 
 `Coordinator.execute_confirmed_trade()` calls `broker.place_order(proposal)`:
 

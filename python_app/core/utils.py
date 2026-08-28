@@ -5,6 +5,9 @@ from typing import Any, Optional
 
 logger = logging.getLogger("Utils")
 
+# Sentinel value to distinguish between actual input and timeout/error conditions
+_NO_INPUT_RECEIVED = object()
+
 def timed_input_with_default(prompt: str, suggestion: str, timeout: int = 10) -> str:
     """
     Asks the user for input with a timeout.
@@ -12,6 +15,11 @@ def timed_input_with_default(prompt: str, suggestion: str, timeout: int = 10) ->
 
     Uses select (Unix) or msvcrt (Windows) to avoid blocking indefinitely
     on a closed/stdin pipe in the daemon thread.
+    
+    SECURITY NOTE: This function is used by auto_confirm_trade for live trade authorization.
+    The suggestion parameter is only used for non-critical operations. For critical operations
+    like trade confirmation, callers should check if actual user input was received using
+    timed_input_explicit().
     """
     result = [None]
     event = threading.Event()
@@ -59,8 +67,115 @@ def timed_input_with_default(prompt: str, suggestion: str, timeout: int = 10) ->
         return suggestion
     return result[0]
 
+def timed_input_explicit(prompt: str, timeout: int = 10) -> Optional[str]:
+    """
+    Asks the user for input with a timeout.
+    Returns the actual user input string, or None if no input was received.
+    
+    This function is designed for security-critical operations where the absence
+    of input must be distinguishable from a default value. Unlike timed_input_with_default,
+    this function returns None on timeout, stdin unavailability, or any error condition.
+    
+    Args:
+        prompt: The prompt message to display to the user
+        timeout: Maximum seconds to wait for input
+        
+    Returns:
+        str: The actual user input (stripped of whitespace) if received
+        None: If timeout occurred, stdin is unavailable, or any error occurred
+    """
+    result = [_NO_INPUT_RECEIVED]
+    event = threading.Event()
+
+    def get_input():
+        try:
+            import sys
+            import select as _select
+
+            def _has_input() -> bool:
+                """Return True if stdin has data ready within the timeout window."""
+                try:
+                    if sys.platform == "win32":
+                        import msvcrt
+                        return msvcrt.kbhit()
+                    else:
+                        return _select.select([sys.stdin], [], [], 0) == ([sys.stdin], [], [])
+                except Exception:
+                    return False
+
+            # Poll until timeout or data available
+            start = time.monotonic()
+            while (time.monotonic() - start) < timeout:
+                if _has_input():
+                    val = sys.stdin.readline()
+                    if val:
+                        result[0] = val.rstrip("\r\n")
+                    break
+                time.sleep(0.1)
+        except Exception as e:
+            logger.warning(f"Input error during trade confirmation: {e}")
+        finally:
+            event.set()
+
+    print(prompt, end=" ", flush=True)
+    thread = threading.Thread(target=get_input, daemon=True)
+    thread.start()
+
+    # Wait for the event OR the timeout
+    signaled = event.wait(timeout)
+
+    if result[0] is _NO_INPUT_RECEIVED:
+        if not signaled:
+            print(f"\n[Timeout reached] No input received within {timeout} seconds.")
+        else:
+            print(f"\n[Input unavailable] stdin is closed, redirected, or unreadable.")
+        return None
+    
+    return result[0]
+
 def auto_confirm_trade(trade_details: Any, recommend_action: str = "YES") -> bool:
-    print(f"\n--- TRADE CONFIRMATION REQUIRED ---")
+    """
+    Prompts for explicit trade confirmation with a timeout.
+    
+    SECURITY: This function implements fail-safe authorization for live trade execution.
+    Returns True ONLY if the user explicitly enters "YES" or "Y" within the timeout period.
+    
+    Any of the following conditions result in rejection (False):
+    - Timeout without input
+    - stdin unavailable, closed, or redirected
+    - Empty input
+    - Any input other than "YES" or "Y" (case-insensitive)
+    - Any error during input collection
+    
+    This ensures that unattended processes, processes with closed stdin, or processes
+    running in environments where stdin is unavailable cannot accidentally authorize
+    live trades.
+    
+    Args:
+        trade_details: Trade information to display to the user
+        recommend_action: Ignored for security reasons. Kept for API compatibility.
+        
+    Returns:
+        bool: True only if user explicitly entered "YES" or "Y", False otherwise
+    """
+    print(f"\n{'='*60}")
+    print(f"TRADE CONFIRMATION REQUIRED")
+    print(f"{'='*60}")
     print(f"Details: {trade_details}")
-    choice = timed_input_with_default("Confirm trade execution?", recommend_action, 10)
-    return choice.upper() in ["YES", "Y"]
+    print(f"\nType 'YES' or 'Y' to confirm, or wait {10} seconds to reject.")
+    
+    choice = timed_input_explicit("Confirm trade execution? [YES/Y to confirm]:", timeout=10)
+    
+    if choice is None:
+        print("[REJECTED] Trade execution cancelled: no confirmation received.")
+        logger.warning(f"Trade confirmation failed: no input received. Trade details: {trade_details}")
+        return False
+    
+    if choice.upper() in ["YES", "Y"]:
+        print("[CONFIRMED] Trade execution authorized.")
+        logger.info(f"Trade confirmation received: {choice}")
+        return True
+    
+    print(f"[REJECTED] Trade execution cancelled: invalid response '{choice}'.")
+    logger.warning(f"Trade confirmation failed: invalid response '{choice}'. Trade details: {trade_details}")
+    return False

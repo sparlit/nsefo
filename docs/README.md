@@ -317,7 +317,7 @@ pub fn assess_winning_probability(indicators: Vec<f64>) -> f64 {
 | 4 | **Signal Convergence** | `calculate_probability()` synthesizes conviction score | `engine.py:47` |
 | 5 | **Greeks Verification** | OpenGreeks delta computed for ATM strike | `engine.py:36-40` |
 | 6 | **Risk Assessment** | `RiskManager.assess_trade()` checks capital exposure | `main.py:70` |
-| 7 | **Confirmation Gate** | 10-second `timed_input_with_default()` waits for user | `main.py:82` |
+| 7 | **Confirmation Gate** | Explicit YES/Y required (fail-safe authorization) | `utils.py:136` |
 | 8 | **Order Execution** | `broker.place_order()` dispatches to exchange | `coordinator.py:61` |
 | 9 | **Autonomous Tracking** | `track_trades()` runs every 1 second | `main.py:141` |
 | 10 | **Dynamic Trailing SL** | `apply_trailing_sl()` moves SL with favorable price | `coordinator.py:38-55` |
