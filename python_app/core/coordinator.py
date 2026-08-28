@@ -321,8 +321,9 @@ class Coordinator:
         Called from track_trades on stop-hit or target-hit.
         
         Security: Places exit order at broker BEFORE updating local state.
-        If broker operation fails, local state remains unchanged and the
-        position continues to be monitored.
+        Verifies the exit order is FILLED before marking trade as closed locally.
+        If broker operation fails or fill cannot be confirmed, local state 
+        remains unchanged and the position continues to be monitored.
         """
         # ── Step 1: Extract trade data under lock ─────────────────────────
         with global_state._lock:
@@ -376,7 +377,7 @@ class Coordinator:
                     else:
                         logger.critical(
                             f"CRITICAL: Failed to close position {order_id} at broker after 3 attempts. "
-                            f"Position remains OPEN at broker but will be removed from monitoring. "
+                            f"Position remains OPEN at broker and will continue monitoring. "
                             f"Manual intervention required: {symbol} {side} {qty}"
                         )
                         return  # Do NOT update local state - keep monitoring
@@ -389,13 +390,13 @@ class Coordinator:
                     else:
                         logger.critical(
                             f"CRITICAL: Failed to close position {order_id} at broker after 3 attempts. "
-                            f"Position remains OPEN at broker but will be removed from monitoring. "
+                            f"Position remains OPEN at broker and will continue monitoring. "
                             f"Manual intervention required: {symbol} {side} {qty}"
                         )
                         return  # Do NOT update local state - keep monitoring
                 
-                # Success - exit order placed
-                logger.info(f"Exit order placed successfully: {exit_order_id} for original order {order_id}")
+                # Exit order placed - now verify it's filled
+                logger.info(f"Exit order placed: {exit_order_id} for original order {order_id}, verifying fill...")
                 break
                 
             except Exception as e:
@@ -405,12 +406,51 @@ class Coordinator:
                 else:
                     logger.critical(
                         f"CRITICAL: Failed to close position {order_id} at broker after 3 attempts due to exception. "
-                        f"Position remains OPEN at broker but will be removed from monitoring. "
+                        f"Position remains OPEN at broker and will continue monitoring. "
                         f"Manual intervention required: {symbol} {side} {qty}"
                     )
                     return  # Do NOT update local state - keep monitoring
         
-        # ── Step 3: Update local state ONLY after broker success ──────────
+        # ── Step 3: Verify exit order is FILLED ────────────────────────────
+        # Poll order status to confirm fill before updating local state
+        fill_confirmed = False
+        actual_exit_price = current_price
+        
+        for poll_attempt in range(10):  # Poll for up to 20 seconds (10 * 2s)
+            try:
+                order_status = self.broker.get_order_status(exit_order_id)
+                status = order_status.get("status", "").upper()
+                
+                if status in ("COMPLETE", "FILLED", "EXECUTED"):
+                    fill_confirmed = True
+                    # Use actual fill price if available
+                    actual_exit_price = order_status.get("average_price") or order_status.get("price") or current_price
+                    logger.info(f"Exit order {exit_order_id} confirmed FILLED at {actual_exit_price}")
+                    break
+                elif status in ("REJECTED", "CANCELLED", "CANCELED"):
+                    logger.error(
+                        f"Exit order {exit_order_id} was {status} after placement. "
+                        f"Position {order_id} remains OPEN at broker and will continue monitoring."
+                    )
+                    return  # Do NOT update local state - keep monitoring
+                else:
+                    # Order still pending (OPEN, PENDING, etc.)
+                    logger.debug(f"Exit order {exit_order_id} status: {status}, waiting... (poll {poll_attempt+1}/10)")
+                    time.sleep(2)
+                    
+            except Exception as e:
+                logger.warning(f"Error checking exit order status (poll {poll_attempt+1}/10): {e}")
+                time.sleep(2)
+        
+        if not fill_confirmed:
+            logger.critical(
+                f"CRITICAL: Could not confirm fill for exit order {exit_order_id} after 20 seconds. "
+                f"Position {order_id} remains in ACTIVE for continued monitoring. "
+                f"Manual verification required: {symbol} {side} {qty}"
+            )
+            return  # Do NOT update local state - keep monitoring
+        
+        # ── Step 4: Update local state ONLY after confirmed fill ──────────
         with global_state._lock:
             # Re-fetch trade to ensure it still exists (may have been closed by another thread)
             trade = next((t for t in global_state.kanban["ACTIVE"] if t.get("order_id") == order_id), None)
@@ -418,16 +458,16 @@ class Coordinator:
                 logger.warning(f"Trade {order_id} already closed by another thread")
                 return
             
-            # Compute P&L
+            # Compute P&L using actual exit price
             if side == "BUY":
-                pnl = (current_price - entry_price) * qty
+                pnl = (actual_exit_price - entry_price) * qty
             else:
-                pnl = (entry_price - current_price) * qty
+                pnl = (entry_price - actual_exit_price) * qty
             
             # Mark trade as closed
             trade["status"] = "CLOSED"
             trade["exit_reason"] = reason
-            trade["exit_price"] = current_price
+            trade["exit_price"] = actual_exit_price
             trade["exit_order_id"] = exit_order_id
             trade["pnl"] = pnl
             trade["exit_time"] = time.time()
@@ -443,7 +483,7 @@ class Coordinator:
                 global_state.active_symbols = [s for s in global_state.active_symbols if s != symbol]
             
             global_state.add_log(
-                f"Trade closed ({reason}): {symbol} {side} {qty} @ {current_price} | "
+                f"Trade closed ({reason}): {symbol} {side} {qty} @ {actual_exit_price} | "
                 f"P&L: {pnl:.2f} | Exit order: {exit_order_id}"
             )
             
