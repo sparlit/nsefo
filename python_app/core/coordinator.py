@@ -735,6 +735,8 @@ class Coordinator:
                     "stop_loss": trade.get("stop_loss"),
                     "target": trade.get("target"),
                     "requested_qty": qty,  # Audit trail
+                    "security_id": trade.get("security_id"),  # Store for market data lookups
+                    "exchange_segment": trade.get("exchange_segment", "NSE_FNO"),
                 })
                 global_state.update_summary(
                     active_trades_count=len(global_state.kanban["ACTIVE"])
@@ -785,14 +787,32 @@ class Coordinator:
                     if monitor_func:
                         market_price = monitor_func(symbol)
                     else:
-                        ltp_data = self.broker.get_market_data([{"security_id": symbol, "exchange_segment": "NSE_FNO"}])
-                        # Handle both direct format and wrapped format (e.g., Bajaj returns {"data": {...}})
+                        # Use stored security_id if available, otherwise fall back to symbol
+                        # This ensures compatibility with Master Trust and similar brokers that
+                        # return market data keyed by security_id, not symbol name
+                        security_id = trade_data.get("security_id") or symbol
+                        exchange_segment = trade_data.get("exchange_segment", "NSE_FNO")
+                        
+                        ltp_data = self.broker.get_market_data([{
+                            "security_id": security_id,
+                            "exchange_segment": exchange_segment
+                        }])
+                        
+                        # Handle both direct format and wrapped format
+                        # Master Trust and similar brokers return {"data": {security_id: {...}}}
+                        # where security_id is the key used in the request, not the symbol name
                         if "data" in ltp_data and isinstance(ltp_data["data"], dict):
-                            market_price = ltp_data["data"].get(symbol, {}).get("last_price", 0)
+                            # Look up by security_id (the key used in request), not symbol
+                            market_price = ltp_data["data"].get(security_id, {}).get("last_price", 0)
                         else:
-                            market_price = ltp_data.get(symbol, {}).get("last_price", 0)
+                            # Fallback for brokers that return flat structure
+                            market_price = ltp_data.get(security_id, {}).get("last_price", 0)
 
                     if not market_price:
+                        logger.warning(
+                            f"No market price available for {symbol} (order_id: {order_id}). "
+                            f"Skipping protective exit checks for this cycle."
+                        )
                         continue
 
                     # ── Get TradeInfo from global_state ──────────────────────
