@@ -319,41 +319,134 @@ class Coordinator:
         """
         Close a trade by order_id and move it to CLOSED column.
         Called from track_trades on stop-hit or target-hit.
+        
+        Security: Places exit order at broker BEFORE updating local state.
+        If broker operation fails, local state remains unchanged and the
+        position continues to be monitored.
         """
+        # ── Step 1: Extract trade data under lock ─────────────────────────
         with global_state._lock:
-            # Find and remove from ACTIVE
             trade = next((t for t in global_state.kanban["ACTIVE"] if t.get("order_id") == order_id), None)
             if not trade:
                 return
-
+            
+            # Copy trade data for broker operation (release lock quickly)
+            symbol = trade["symbol"]
             side = trade["side"]
             entry_price = trade["price"]
             qty = trade["qty"]
-
+            stop_loss = trade.get("stop_loss")
+            target = trade.get("target")
+        
+        # ── Step 2: Place exit order at broker FIRST ──────────────────────
+        # Exit side is opposite of entry side
+        exit_side = "SELL" if side == "BUY" else "BUY"
+        exit_order_payload = {
+            "symbol": symbol,
+            "side": exit_side,
+            "qty": qty,
+            "price": current_price,
+            "idempotency_key": f"{order_id}_exit_{uuid.uuid4().hex[:8]}",
+            "tag": "EXIT",
+        }
+        
+        exit_order_id = None
+        for attempt in range(3):
+            try:
+                logger.info(f"Attempting broker exit for {order_id} (attempt {attempt+1}/3): {exit_side} {qty} {symbol} @ {current_price}")
+                result = self.broker.place_order(exit_order_payload)
+                
+                # Normalize result (handle string returns for backwards compat)
+                if isinstance(result, str):
+                    oid = result.strip() if result else ""
+                    result = {
+                        "order_id": oid,
+                        "status": "OPEN" if oid else "ERROR",
+                        "message": "" if oid else "Broker returned empty order_id",
+                    }
+                
+                exit_order_id = result.get("order_id", "")
+                status = result.get("status", "ERROR")
+                
+                if status == "REJECTED":
+                    logger.error(f"Exit order rejected for {order_id}: {result.get('message', 'unknown')}")
+                    if attempt < 2:
+                        time.sleep(2 ** attempt)
+                        continue
+                    else:
+                        logger.critical(
+                            f"CRITICAL: Failed to close position {order_id} at broker after 3 attempts. "
+                            f"Position remains OPEN at broker but will be removed from monitoring. "
+                            f"Manual intervention required: {symbol} {side} {qty}"
+                        )
+                        return  # Do NOT update local state - keep monitoring
+                
+                if status == "ERROR" or not exit_order_id:
+                    logger.error(f"Exit order failed for {order_id}: {result.get('message', 'broker error')}")
+                    if attempt < 2:
+                        time.sleep(2 ** attempt)
+                        continue
+                    else:
+                        logger.critical(
+                            f"CRITICAL: Failed to close position {order_id} at broker after 3 attempts. "
+                            f"Position remains OPEN at broker but will be removed from monitoring. "
+                            f"Manual intervention required: {symbol} {side} {qty}"
+                        )
+                        return  # Do NOT update local state - keep monitoring
+                
+                # Success - exit order placed
+                logger.info(f"Exit order placed successfully: {exit_order_id} for original order {order_id}")
+                break
+                
+            except Exception as e:
+                logger.error(f"Exception placing exit order for {order_id} (attempt {attempt+1}/3): {e}")
+                if attempt < 2:
+                    time.sleep(2 ** attempt)
+                else:
+                    logger.critical(
+                        f"CRITICAL: Failed to close position {order_id} at broker after 3 attempts due to exception. "
+                        f"Position remains OPEN at broker but will be removed from monitoring. "
+                        f"Manual intervention required: {symbol} {side} {qty}"
+                    )
+                    return  # Do NOT update local state - keep monitoring
+        
+        # ── Step 3: Update local state ONLY after broker success ──────────
+        with global_state._lock:
+            # Re-fetch trade to ensure it still exists (may have been closed by another thread)
+            trade = next((t for t in global_state.kanban["ACTIVE"] if t.get("order_id") == order_id), None)
+            if not trade:
+                logger.warning(f"Trade {order_id} already closed by another thread")
+                return
+            
             # Compute P&L
             if side == "BUY":
                 pnl = (current_price - entry_price) * qty
             else:
                 pnl = (entry_price - current_price) * qty
-
+            
             # Mark trade as closed
             trade["status"] = "CLOSED"
             trade["exit_reason"] = reason
             trade["exit_price"] = current_price
+            trade["exit_order_id"] = exit_order_id
             trade["pnl"] = pnl
             trade["exit_time"] = time.time()
-
+            
+            # Move from ACTIVE to CLOSED
             global_state.kanban["ACTIVE"] = [t for t in global_state.kanban["ACTIVE"] if t.get("order_id") != order_id]
             global_state.kanban["CLOSED"].append(trade)
             global_state.add_pnl(pnl)
             global_state.update_summary(active_trades_count=len(global_state.kanban["ACTIVE"]))
-
+            
             # Clean up active_symbols if no trades for this symbol remain
-            symbol = trade["symbol"]
             if not any(t.get("symbol") == symbol for t in global_state.kanban["ACTIVE"]):
                 global_state.active_symbols = [s for s in global_state.active_symbols if s != symbol]
-            global_state.add_log(f"Trade closed ({reason}): {trade['symbol']} {side} {qty} @ {current_price} | P&L: {pnl:.2f}")
-
+            
+            global_state.add_log(
+                f"Trade closed ({reason}): {symbol} {side} {qty} @ {current_price} | "
+                f"P&L: {pnl:.2f} | Exit order: {exit_order_id}"
+            )
+            
             # ── Record in circuit breaker ─────────────────────────────────────
             if self.risk_manager is not None:
                 self.risk_manager.cb.record_trade(pnl)
@@ -361,11 +454,6 @@ class Coordinator:
                     f"Circuit breaker: {self.risk_manager.cb.consecutive_losses} consecutive losses, "
                     f"session P&L: {self.risk_manager.cb.session_pnl:.2f}"
                 )
-
-            try:
-                self.broker.close_position(order_id=order_id)
-            except Exception as e:
-                logger.warning(f"Broker.close_position failed for {order_id}: {e}")
 
 
 # Exposed for type hints elsewhere
