@@ -138,6 +138,11 @@ class Coordinator:
         self._exit_requested = threading.Event()
         self._track_thread: Optional[threading.Thread] = None
         
+        # Idempotency tracking: maps idempotency_key -> (order_id, timestamp)
+        # Prevents duplicate order submissions when retries occur after broker acceptance
+        self._submitted_orders: Dict[str, tuple[str, float]] = {}
+        self._submitted_orders_lock = threading.Lock()
+        
         # Reconcile broker positions on startup to restore monitoring for existing positions
         if reconcile_positions:
             self._reconcile_broker_positions()
@@ -288,12 +293,168 @@ class Coordinator:
         # ── Build stable idempotency key (same for all retries) ──────────────
         idempotency_key = trade.get("idempotency_key") or f"{symbol}_{side}_{uuid.uuid4().hex[:8]}"
 
+        # ── Check local deduplication cache first ────────────────────────────
+        # If we've already submitted this order successfully, return the cached result
+        with self._submitted_orders_lock:
+            if idempotency_key in self._submitted_orders:
+                cached_order_id, submit_time = self._submitted_orders[idempotency_key]
+                # Only use cache if submission was recent (within last 60 seconds)
+                if time.time() - submit_time < 60:
+                    logger.warning(
+                        f"Idempotency key {idempotency_key} already submitted recently "
+                        f"(order_id: {cached_order_id}). Verifying order status..."
+                    )
+                    try:
+                        # Verify the cached order is actually filled
+                        order_status_response = self.broker.get_order_status(cached_order_id)
+                        final_status = (order_status_response.get("status") or "").upper()
+                        
+                        if final_status in ("COMPLETE", "FILLED", "EXECUTED"):
+                            # Extract actual filled quantity
+                            filled_qty_raw = (
+                                order_status_response.get("filled_quantity") or
+                                order_status_response.get("filled_qty") or
+                                order_status_response.get("quantity") or
+                                qty
+                            )
+                            actual_filled_qty = int(filled_qty_raw) if filled_qty_raw else qty
+                            
+                            avg_price_raw = (
+                                order_status_response.get("average_price") or
+                                order_status_response.get("avg_price") or
+                                order_status_response.get("price") or
+                                price
+                            )
+                            actual_avg_price = float(avg_price_raw) if avg_price_raw else price
+                            
+                            logger.info(
+                                f"Cached order {cached_order_id} confirmed FILLED: "
+                                f"{actual_filled_qty}/{qty} @ {actual_avg_price}. "
+                                f"Prevented duplicate submission."
+                            )
+                            
+                            # Register the order with actual filled quantity
+                            order_info = {
+                                "order_id": cached_order_id,
+                                "symbol": symbol,
+                                "side": side,
+                                "price": actual_avg_price,
+                                "qty": actual_filled_qty,
+                                "status": "FILLED",
+                                "requested_qty": qty,
+                            }
+                            
+                            global_state.kanban["ACTIVE"].append({
+                                "symbol": symbol,
+                                "side": side,
+                                "price": actual_avg_price,
+                                "quantity": actual_filled_qty,
+                                "order_id": cached_order_id,
+                                "entry_time": time.time(),
+                                "stop_loss": trade.get("stop_loss"),
+                                "target": trade.get("target"),
+                                "requested_qty": qty,
+                            })
+                            global_state.update_summary(
+                                active_trades_count=len(global_state.kanban["ACTIVE"])
+                            )
+                            global_state.add_log(
+                                f"Trade confirmed (cached): {side} {actual_filled_qty} {symbol} @ {actual_avg_price} "
+                                f"[order_id={cached_order_id}]"
+                            )
+                            return order_info
+                        else:
+                            logger.warning(
+                                f"Cached order {cached_order_id} is not filled (status: {final_status}). "
+                                f"Removing from cache and proceeding with new submission."
+                            )
+                            del self._submitted_orders[idempotency_key]
+                    except Exception as cache_verify_error:
+                        logger.warning(
+                            f"Failed to verify cached order {cached_order_id}: {cache_verify_error}. "
+                            f"Removing from cache and proceeding with new submission."
+                        )
+                        del self._submitted_orders[idempotency_key]
+                else:
+                    # Cache entry is stale, remove it
+                    logger.debug(f"Removing stale cache entry for {idempotency_key}")
+                    del self._submitted_orders[idempotency_key]
+
         for attempt in range(3):
             # ── Reconciliation: Check if previous attempt succeeded ──────────
             if attempt > 0:
                 # Before retrying, check if the order was already placed
                 try:
                     logger.info(f"Reconciling orderbook before retry {attempt+1} for {symbol} {side}")
+                    
+                    # First check local cache again (another thread might have submitted)
+                    with self._submitted_orders_lock:
+                        if idempotency_key in self._submitted_orders:
+                            cached_order_id, submit_time = self._submitted_orders[idempotency_key]
+                            if time.time() - submit_time < 60:
+                                logger.info(
+                                    f"Found order {cached_order_id} in local cache during retry. "
+                                    f"Verifying status..."
+                                )
+                                try:
+                                    order_status_response = self.broker.get_order_status(cached_order_id)
+                                    final_status = (order_status_response.get("status") or "").upper()
+                                    
+                                    if final_status in ("COMPLETE", "FILLED", "EXECUTED"):
+                                        # Extract actual filled quantity
+                                        filled_qty_raw = (
+                                            order_status_response.get("filled_quantity") or
+                                            order_status_response.get("filled_qty") or
+                                            order_status_response.get("quantity") or
+                                            qty
+                                        )
+                                        actual_filled_qty = int(filled_qty_raw) if filled_qty_raw else qty
+                                        
+                                        avg_price_raw = (
+                                            order_status_response.get("average_price") or
+                                            order_status_response.get("avg_price") or
+                                            order_status_response.get("price") or
+                                            price
+                                        )
+                                        actual_avg_price = float(avg_price_raw) if avg_price_raw else price
+                                        
+                                        logger.info(
+                                            f"Cached order {cached_order_id} confirmed FILLED during retry: "
+                                            f"{actual_filled_qty}/{qty} @ {actual_avg_price}"
+                                        )
+                                        
+                                        # Register the order
+                                        order_info = {
+                                            "order_id": cached_order_id,
+                                            "symbol": symbol,
+                                            "side": side,
+                                            "price": actual_avg_price,
+                                            "qty": actual_filled_qty,
+                                            "status": "FILLED",
+                                            "requested_qty": qty,
+                                        }
+                                        
+                                        global_state.kanban["ACTIVE"].append({
+                                            "symbol": symbol,
+                                            "side": side,
+                                            "price": actual_avg_price,
+                                            "quantity": actual_filled_qty,
+                                            "order_id": cached_order_id,
+                                            "entry_time": time.time(),
+                                            "stop_loss": trade.get("stop_loss"),
+                                            "target": trade.get("target"),
+                                            "requested_qty": qty,
+                                        })
+                                        global_state.update_summary(
+                                            active_trades_count=len(global_state.kanban["ACTIVE"])
+                                        )
+                                        global_state.add_log(
+                                            f"Trade confirmed (retry cache hit): {side} {actual_filled_qty} {symbol} @ {actual_avg_price} "
+                                            f"[order_id={cached_order_id}]"
+                                        )
+                                        return order_info
+                                except Exception as e:
+                                    logger.warning(f"Failed to verify cached order during retry: {e}")
                     
                     # Check if broker implements get_orderbook (not in base interface)
                     if not hasattr(self.broker, 'get_orderbook'):
@@ -359,6 +520,10 @@ class Coordinator:
                                         f"Reconciled order {order_id} confirmed FILLED: "
                                         f"{actual_filled_qty}/{qty} @ {actual_avg_price}"
                                     )
+                                    
+                                    # Cache this order to prevent future duplicates
+                                    with self._submitted_orders_lock:
+                                        self._submitted_orders[idempotency_key] = (order_id, time.time())
                                     
                                     # Register the reconciled order with actual filled quantity
                                     order_info = {
@@ -453,6 +618,12 @@ class Coordinator:
                         f"Unknown order status '{status}': {result.get('message', 'unexpected broker response')}",
                         symbol=symbol, side=side, price=price, qty=qty,
                     )
+                
+                # ── Cache the order_id immediately after broker acceptance ────
+                # This prevents duplicate submissions if the response is lost after this point
+                with self._submitted_orders_lock:
+                    self._submitted_orders[idempotency_key] = (order_id, time.time())
+                    logger.debug(f"Cached order {order_id} with idempotency key {idempotency_key}")
 
                 # ── Step 2: Verify order is FILLED before tracking ────────────
                 # Poll order status to confirm fill and get actual filled quantity
@@ -592,7 +763,15 @@ class Coordinator:
         Runs in the main trading loop on the main thread (not a daemon).
         Call start_trade_tracking() to launch the background monitor instead.
         """
+        last_cleanup_time = time.time()
+        
         while not self._exit_requested.is_set():
+            # Periodically clean up stale order cache entries (every 5 minutes)
+            current_time = time.time()
+            if current_time - last_cleanup_time > 300:  # 5 minutes
+                self._cleanup_stale_order_cache()
+                last_cleanup_time = current_time
+            
             with global_state._lock:
                 active = list(global_state.kanban["ACTIVE"])
 
@@ -670,6 +849,23 @@ class Coordinator:
             self._track_thread.join(timeout=5)
             self._track_thread = None
 
+    def _cleanup_stale_order_cache(self) -> None:
+        """
+        Remove stale entries from the order submission cache.
+        Called periodically to prevent unbounded memory growth.
+        Entries older than 5 minutes are removed.
+        """
+        with self._submitted_orders_lock:
+            current_time = time.time()
+            stale_keys = [
+                key for key, (order_id, submit_time) in self._submitted_orders.items()
+                if current_time - submit_time > 300  # 5 minutes
+            ]
+            for key in stale_keys:
+                del self._submitted_orders[key]
+            if stale_keys:
+                logger.debug(f"Cleaned up {len(stale_keys)} stale order cache entries")
+
     def _run_tracking(self, monitor_func) -> None:
         self.track_trades(monitor_func=monitor_func)
 
@@ -704,6 +900,23 @@ class Coordinator:
         # Generate stable idempotency key for exit order (same across all retries)
         exit_idempotency_key = f"{order_id}_exit_{uuid.uuid4().hex[:8]}"
         
+        # Check local cache first to prevent duplicate exit orders
+        with self._submitted_orders_lock:
+            if exit_idempotency_key in self._submitted_orders:
+                cached_exit_order_id, submit_time = self._submitted_orders[exit_idempotency_key]
+                if time.time() - submit_time < 60:
+                    logger.warning(
+                        f"Exit order for {order_id} already submitted recently "
+                        f"(exit_order_id: {cached_exit_order_id}). Using cached order."
+                    )
+                    exit_order_id = cached_exit_order_id
+                else:
+                    # Stale cache entry, remove it
+                    del self._submitted_orders[exit_idempotency_key]
+                    exit_order_id = None
+            else:
+                exit_order_id = None
+        
         exit_order_payload = {
             "symbol": symbol,
             "side": exit_side,
@@ -713,114 +926,134 @@ class Coordinator:
             "tag": "EXIT",
         }
         
-        exit_order_id = None
-        for attempt in range(3):
-            # ── Reconciliation: Check if previous exit attempt succeeded ──────
-            if attempt > 0:
-                try:
-                    logger.info(f"Reconciling orderbook before exit retry {attempt+1} for {order_id}")
-                    
-                    # Check if broker implements get_orderbook (not in base interface)
-                    if not hasattr(self.broker, 'get_orderbook'):
-                        logger.debug("Broker does not implement get_orderbook, skipping exit reconciliation")
-                        raise AttributeError("get_orderbook not implemented")
-                    
-                    orderbook = self.broker.get_orderbook()
-                    
-                    # Look for recent exit orders matching this trade's characteristics
-                    recent_orders = orderbook[-10:] if isinstance(orderbook, list) else []
-                    
-                    for existing_order in recent_orders:
-                        existing_symbol = existing_order.get("symbol") or existing_order.get("trading_symbol")
-                        existing_side = existing_order.get("side") or existing_order.get("transaction_type")
-                        existing_qty = existing_order.get("quantity") or existing_order.get("qty")
-                        existing_status = (existing_order.get("status") or "").upper()
-                        
-                        # Match by symbol, exit side, quantity, and non-rejected status
-                        if (existing_symbol == symbol and 
-                            existing_side == exit_side and 
-                            existing_qty == qty and
-                            existing_status not in ("REJECTED", "CANCELLED", "CANCELED")):
-                            
-                            # Found a matching exit order from previous attempt
-                            found_exit_order_id = existing_order.get("order_id") or existing_order.get("orderid")
-                            if found_exit_order_id:
-                                logger.warning(
-                                    f"Reconciliation found existing exit order {found_exit_order_id} for {order_id}. "
-                                    f"Previous exit attempt succeeded but response was lost. Using existing order."
+        if not exit_order_id:  # Only place order if not found in cache
+            for attempt in range(3):
+                # ── Reconciliation: Check if previous exit attempt succeeded ──────
+                if attempt > 0:
+                    # Check cache again before reconciliation
+                    with self._submitted_orders_lock:
+                        if exit_idempotency_key in self._submitted_orders:
+                            cached_exit_order_id, submit_time = self._submitted_orders[exit_idempotency_key]
+                            if time.time() - submit_time < 60:
+                                logger.info(
+                                    f"Found exit order {cached_exit_order_id} in cache during retry. "
+                                    f"Using cached order."
                                 )
-                                exit_order_id = found_exit_order_id
+                                exit_order_id = cached_exit_order_id
                                 break
                     
-                    if exit_order_id:
-                        # Found reconciled exit order, skip to verification
-                        logger.info(f"Using reconciled exit order {exit_order_id}, proceeding to fill verification")
-                        break
+                    try:
+                        logger.info(f"Reconciling orderbook before exit retry {attempt+1} for {order_id}")
                         
-                except Exception as reconcile_error:
-                    logger.warning(f"Exit reconciliation failed: {reconcile_error}. Proceeding with retry.")
-            
-            # Skip placement if we found a reconciled order
-            if exit_order_id:
-                break
-            
-            try:
-                logger.info(f"Attempting broker exit for {order_id} (attempt {attempt+1}/3): {exit_side} {qty} {symbol} @ {current_price}")
-                result = self.broker.place_order(exit_order_payload)
+                        # Check if broker implements get_orderbook (not in base interface)
+                        if not hasattr(self.broker, 'get_orderbook'):
+                            logger.debug("Broker does not implement get_orderbook, skipping exit reconciliation")
+                            raise AttributeError("get_orderbook not implemented")
+                        
+                        orderbook = self.broker.get_orderbook()
+                        
+                        # Look for recent exit orders matching this trade's characteristics
+                        recent_orders = orderbook[-10:] if isinstance(orderbook, list) else []
+                        
+                        for existing_order in recent_orders:
+                            existing_symbol = existing_order.get("symbol") or existing_order.get("trading_symbol")
+                            existing_side = existing_order.get("side") or existing_order.get("transaction_type")
+                            existing_qty = existing_order.get("quantity") or existing_order.get("qty")
+                            existing_status = (existing_order.get("status") or "").upper()
+                            
+                            # Match by symbol, exit side, quantity, and non-rejected status
+                            if (existing_symbol == symbol and 
+                                existing_side == exit_side and 
+                                existing_qty == qty and
+                                existing_status not in ("REJECTED", "CANCELLED", "CANCELED")):
+                                
+                                # Found a matching exit order from previous attempt
+                                found_exit_order_id = existing_order.get("order_id") or existing_order.get("orderid")
+                                if found_exit_order_id:
+                                    logger.warning(
+                                        f"Reconciliation found existing exit order {found_exit_order_id} for {order_id}. "
+                                        f"Previous exit attempt succeeded but response was lost. Using existing order."
+                                    )
+                                    exit_order_id = found_exit_order_id
+                                    # Cache the reconciled order
+                                    with self._submitted_orders_lock:
+                                        self._submitted_orders[exit_idempotency_key] = (exit_order_id, time.time())
+                                    break
+                        
+                        if exit_order_id:
+                            # Found reconciled exit order, skip to verification
+                            logger.info(f"Using reconciled exit order {exit_order_id}, proceeding to fill verification")
+                            break
+                            
+                    except Exception as reconcile_error:
+                        logger.warning(f"Exit reconciliation failed: {reconcile_error}. Proceeding with retry.")
                 
-                # Normalize result (handle string returns for backwards compat)
-                if isinstance(result, str):
-                    oid = result.strip() if result else ""
-                    result = {
-                        "order_id": oid,
-                        "status": "OPEN" if oid else "ERROR",
-                        "message": "" if oid else "Broker returned empty order_id",
-                    }
+                # Skip placement if we found a reconciled order
+                if exit_order_id:
+                    break
                 
-                exit_order_id = result.get("order_id", "")
-                status = result.get("status", "ERROR")
-                
-                if status == "REJECTED":
-                    logger.error(f"Exit order rejected for {order_id}: {result.get('message', 'unknown')}")
+                try:
+                    logger.info(f"Attempting broker exit for {order_id} (attempt {attempt+1}/3): {exit_side} {qty} {symbol} @ {current_price}")
+                    result = self.broker.place_order(exit_order_payload)
+                    
+                    # Normalize result (handle string returns for backwards compat)
+                    if isinstance(result, str):
+                        oid = result.strip() if result else ""
+                        result = {
+                            "order_id": oid,
+                            "status": "OPEN" if oid else "ERROR",
+                            "message": "" if oid else "Broker returned empty order_id",
+                        }
+                    
+                    exit_order_id = result.get("order_id", "")
+                    status = result.get("status", "ERROR")
+                    
+                    if status == "REJECTED":
+                        logger.error(f"Exit order rejected for {order_id}: {result.get('message', 'unknown')}")
+                        if attempt < 2:
+                            time.sleep(2 ** attempt)
+                            continue
+                        else:
+                            logger.critical(
+                                f"CRITICAL: Failed to close position {order_id} at broker after 3 attempts. "
+                                f"Position remains OPEN at broker and will continue monitoring. "
+                                f"Manual intervention required: {symbol} {side} {qty}"
+                            )
+                            return  # Do NOT update local state - keep monitoring
+                    
+                    if status == "ERROR" or not exit_order_id:
+                        logger.error(f"Exit order failed for {order_id}: {result.get('message', 'broker error')}")
+                        if attempt < 2:
+                            time.sleep(2 ** attempt)
+                            continue
+                        else:
+                            logger.critical(
+                                f"CRITICAL: Failed to close position {order_id} at broker after 3 attempts. "
+                                f"Position remains OPEN at broker and will continue monitoring. "
+                                f"Manual intervention required: {symbol} {side} {qty}"
+                            )
+                            return  # Do NOT update local state - keep monitoring
+                    
+                    # Cache the exit order immediately after broker acceptance
+                    with self._submitted_orders_lock:
+                        self._submitted_orders[exit_idempotency_key] = (exit_order_id, time.time())
+                        logger.debug(f"Cached exit order {exit_order_id} with idempotency key {exit_idempotency_key}")
+                    
+                    # Exit order placed - now verify it's filled
+                    logger.info(f"Exit order placed: {exit_order_id} for original order {order_id}, verifying fill...")
+                    break
+                    
+                except Exception as e:
+                    logger.error(f"Exception placing exit order for {order_id} (attempt {attempt+1}/3): {e}")
                     if attempt < 2:
                         time.sleep(2 ** attempt)
-                        continue
                     else:
                         logger.critical(
-                            f"CRITICAL: Failed to close position {order_id} at broker after 3 attempts. "
+                            f"CRITICAL: Failed to close position {order_id} at broker after 3 attempts due to exception. "
                             f"Position remains OPEN at broker and will continue monitoring. "
                             f"Manual intervention required: {symbol} {side} {qty}"
                         )
                         return  # Do NOT update local state - keep monitoring
-                
-                if status == "ERROR" or not exit_order_id:
-                    logger.error(f"Exit order failed for {order_id}: {result.get('message', 'broker error')}")
-                    if attempt < 2:
-                        time.sleep(2 ** attempt)
-                        continue
-                    else:
-                        logger.critical(
-                            f"CRITICAL: Failed to close position {order_id} at broker after 3 attempts. "
-                            f"Position remains OPEN at broker and will continue monitoring. "
-                            f"Manual intervention required: {symbol} {side} {qty}"
-                        )
-                        return  # Do NOT update local state - keep monitoring
-                
-                # Exit order placed - now verify it's filled
-                logger.info(f"Exit order placed: {exit_order_id} for original order {order_id}, verifying fill...")
-                break
-                
-            except Exception as e:
-                logger.error(f"Exception placing exit order for {order_id} (attempt {attempt+1}/3): {e}")
-                if attempt < 2:
-                    time.sleep(2 ** attempt)
-                else:
-                    logger.critical(
-                        f"CRITICAL: Failed to close position {order_id} at broker after 3 attempts due to exception. "
-                        f"Position remains OPEN at broker and will continue monitoring. "
-                        f"Manual intervention required: {symbol} {side} {qty}"
-                    )
-                    return  # Do NOT update local state - keep monitoring
         
         # ── Step 3: Verify exit order is FILLED ────────────────────────────
         # Poll order status to confirm fill before updating local state
