@@ -136,7 +136,10 @@ class HDFCSecuritiesProvider(Broker):
             response = self._get_client().post(url, json=payload, headers=self._get_headers(), timeout=10)
             if response.status_code == 200:
                 data = response.json()
-                oid = str(data.get('order_id', ''))
+                oid = str(data.get('order_id', '')).strip()
+                if not oid:
+                    self.logger.error("HDFC Securities returned empty order_id")
+                    return {"order_id": "", "status": "REJECTED", "message": "Broker returned empty order ID"}
                 return {"order_id": oid, "status": "OPEN", "message": ""}
             return {"order_id": "", "status": "REJECTED", "message": f"HTTP {response.status_code}: {response.text[:80]}"}
         except Exception as e:

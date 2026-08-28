@@ -133,8 +133,24 @@ class ChoiceProvider(Broker):
             response = self.session.post(url, json=payload, headers=self.headers, timeout=10)
             if response.status_code == 200:
                 data = response.json()
-                if data.get('status') or data.get('success'):
-                    oid = str(data.get('order_id', data.get('data', {}).get('order_id', '')))
+                # Require explicit success values - reject truthy but non-success values
+                status_value = data.get('status')
+                success_value = data.get('success')
+                
+                # Check for explicit success indicators (not just truthy values)
+                is_success = False
+                if status_value is True or success_value is True:
+                    is_success = True
+                elif isinstance(status_value, str) and status_value.lower() in ('success', 'ok', 'complete'):
+                    is_success = True
+                elif isinstance(success_value, str) and success_value.lower() in ('success', 'ok', 'true'):
+                    is_success = True
+                
+                if is_success:
+                    oid = str(data.get('order_id', data.get('data', {}).get('order_id', ''))).strip()
+                    if not oid:
+                        self.logger.error("Choice returned empty order_id despite success status")
+                        return {"order_id": "", "status": "REJECTED", "message": "Broker returned empty order ID"}
                     return {"order_id": oid, "status": "OPEN", "message": ""}
                 return {"order_id": "", "status": "REJECTED", "message": data.get('message', 'Order rejected')}
             return {"order_id": "", "status": "REJECTED", "message": f"HTTP {response.status_code}"}

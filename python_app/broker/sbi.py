@@ -145,7 +145,10 @@ class SBISecuritiesProvider(Broker):
             response = client.post("/api/v1/orders", json=payload)
             if response.status_code in (200, 201):
                 data = response.json()
-                oid = str(data.get("order_id", ""))
+                oid = str(data.get("order_id", "")).strip()
+                if not oid:
+                    self.logger.error("SBI returned empty order_id")
+                    return {"order_id": "", "status": "REJECTED", "message": "Broker returned empty order ID"}
                 return {"order_id": oid, "status": "OPEN", "message": ""}
             return {"order_id": "", "status": "REJECTED", "message": f"HTTP {response.status_code}"}
         except Exception as e:

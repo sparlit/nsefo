@@ -96,7 +96,10 @@ class GrowwProvider(Broker):
             resp.raise_for_status()
             data = resp.json()
             if data.get("status", "").lower() == "success":
-                oid = str(data.get("data", {}).get("order_id", ""))
+                oid = str(data.get("data", {}).get("order_id", "")).strip()
+                if not oid:
+                    self.logger.error("Groww returned empty order_id despite success status")
+                    return {"order_id": "", "status": "REJECTED", "message": "Broker returned empty order ID"}
                 return {"order_id": oid, "status": "OPEN", "message": ""}
             return {"order_id": "", "status": "REJECTED", "message": data.get('remarks', 'Order rejected')}
         except Exception as e:
